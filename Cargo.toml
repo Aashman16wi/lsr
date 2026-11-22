@@ -1,0 +1,64 @@
+[package]
+name = "lsr"
+version = "0.1.0"
+edition = "2024"
+description = "A fast, modern, feature-rich ls replacement written in Rust"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/rls"
+
+[dependencies]
+# CLI argument parsing
+clap = { version = "4.5", features = ["derive", "help"] }
+clap_complete = "4.5"
+
+# File system operations
+ignore = "0.4"
+
+# Parallel I/O
+rayon = "1.10"
+
+# Git integration
+gix = "0.68"
+
+# Colors and styling
+owo-colors = "4.0"
+terminal_size = "0.2"
+atty = "0.2"
+
+# User/group lookup
+users = "0.11"
+
+# Synchronization (using std::sync::Mutex)
+
+# File type detection and icons
+mime_guess = "2.0"
+
+# Date/time formatting
+chrono = { version = "0.4", features = ["serde"] }
+
+# Serialization for JSON output
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Human-readable file sizes (handled manually)
+# byte-unit = "5.0"
+
+# Unicode width for proper column alignment
+unicode-width = "0.1"
+
+# Error handling
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = 3
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
