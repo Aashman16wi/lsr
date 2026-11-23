@@ -66,14 +66,13 @@ pub enum IconWhen {
     Never,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(
     name = "lsr",
     version,
     about = "A fast, modern, feature-rich ls replacement written in Rust",
     long_about = "lsr (ls in Rust) - A modern replacement for ls with colors, icons, git integration, and more.",
-    arg_required_else_help = false,
-    disable_version_flag = true
+    arg_required_else_help = false
 )]
 pub struct Args {
     /// Paths to list (default: current directory)
@@ -127,8 +126,8 @@ pub struct Args {
     #[arg(short = 'r', long)]
     pub reverse: bool,
 
-    /// Group directories first
-    #[arg(long, default_value_t = true)]
+    /// Group directories before files
+    #[arg(long, default_value_t = false)]
     pub group_dirs_first: bool,
 
     /// Time field for sorting/display
@@ -161,7 +160,7 @@ pub struct Args {
     pub group: bool,
 
     /// Show git status
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = false)]
     pub git: bool,
 
     /// Show file icons
@@ -189,8 +188,40 @@ pub struct Args {
     pub dereference: bool,
 
     /// Classify files (append /, @, *, etc.)
-    #[arg(short = 'F', long = "classify", conflicts_with = "format")]
+    #[arg(short = 'F', long = "classify")]
     pub classify: bool,
+
+    // === New features ===
+    /// Show directory sizes (like du)
+    #[arg(long)]
+    pub du: bool,
+
+    /// Filter files containing text (simple grep)
+    #[arg(long = "grep", value_name = "PATTERN")]
+    pub grep_pattern: Option<String>,
+
+    /// Group files by: ext, date, size
+    #[arg(long = "group-by", value_name = "MODE", value_parser = ["ext", "date", "size"])]
+    pub group_by: Option<String>,
+
+    // === TUI ===
+    /// Launch interactive TUI file browser
+    #[arg(long)]
+    pub tui: bool,
+
+    // === Archive ===
+    /// List archive contents (zip, tar, tar.gz, tar.zst)
+    #[arg(long)]
+    pub archive: bool,
+
+    // === Watch ===
+    /// Watch for changes and refresh (like watch -n 1)
+    #[arg(short = 'w', long)]
+    pub watch: bool,
+
+    /// Watch interval in seconds
+    #[arg(long = "watch-interval", value_name = "SECONDS", default_value_t = 2)]
+    pub watch_interval: u64,
 
     // === Performance ===
     /// Number of threads (0 = auto)
@@ -214,13 +245,21 @@ pub struct Args {
     #[arg(short = 'v', long)]
     pub verbose: bool,
 
-    /// Print version and exit
-    #[arg(short = 'V', long)]
-    pub version: bool,
+    /// Use a built-in theme (default, minimal, dev)
+    #[arg(long, value_name = "THEME")]
+    pub theme: Option<String>,
+
+    /// Path to config file
+    #[arg(long = "config-file", value_name = "PATH")]
+    pub config_file: Option<PathBuf>,
 
     /// Generate shell completions
     #[arg(long = "generate-completion", value_enum, hide = true)]
     pub completion: Option<Shell>,
+
+    /// Generate default config file
+    #[arg(long = "generate-config", hide = true)]
+    pub generate_config: bool,
 }
 
 impl Args {
@@ -233,10 +272,5 @@ impl Args {
         } else {
             self.format
         }
-    }
-
-    /// Check if long format is requested
-    pub fn is_long(&self) -> bool {
-        matches!(self.effective_format(), OutputFormat::Long | OutputFormat::Tree)
     }
 }

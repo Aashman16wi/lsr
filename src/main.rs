@@ -8,18 +8,24 @@ mod output;
 mod git;
 mod icons;
 mod format;
+mod config;
+mod archive;
+mod watch;
 
 use anyhow::Result;
 use cli::{Args, OutputFormat};
 use clap::{CommandFactory, Parser};
-use clap_complete::Shell;
+use config::LsrConfig;
 use fs::{collect_entries, EntryData};
 use git::GitRepo;
-use output::{print_entries, print_tree};
+use output::{print_entries, print_trees};
 use format::FormatOptions;
 use std::io;
+use std::path::PathBuf;
 
 fn main() -> Result<()> {
+    let explicit_format = explicit_format_requested();
+
     let args = Args::parse();
 
     // Handle shell completion generation
@@ -28,6 +34,67 @@ fn main() -> Result<()> {
         clap_complete::generate(shell, &mut cmd, "lsr", &mut io::stdout());
         return Ok(());
     }
+
+    // Handle generate config
+    if args.generate_config {
+        generate_default_config();
+        return Ok(());
+    }
+
+    // Handle watch mode
+    if args.watch {
+        return watch::run_watch(args);
+    }
+
+    // Handle archive listing
+    if args.archive {
+        return archive::list_archive_cli(args);
+    }
+
+    // An explicitly requested config file must exist.
+    if let Some(path) = &args.config_file {
+        if !path.exists() {
+            anyhow::bail!("config file not found: {}", path.display());
+        }
+    }
+
+    // Load configuration. A broken config should be visible, not silently ignored.
+    let config = match LsrConfig::load(args.theme.as_deref(), args.config_file.as_deref()) {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("lsr: warning: failed to load config: {error}");
+            LsrConfig::default()
+        }
+    };
+
+    // Per-directory settings are resolved for the primary path.
+    let primary_path = args
+        .paths
+        .first()
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from("."));
+    let effective = config.for_path(&primary_path);
+
+    // Determine effective format (CLI > per-directory config > global config > default)
+    let effective_format = if explicit_format {
+        args.effective_format()
+    } else {
+        match effective.format.default.as_str() {
+            "long" => OutputFormat::Long,
+            "tree" => OutputFormat::Tree,
+            "json" => OutputFormat::Json,
+            "csv" => OutputFormat::Csv,
+            _ => OutputFormat::Default,
+        }
+    };
+
+    // For tree view, use depth from config if not explicitly set via CLI
+    let tree_depth = if args.depth == usize::MAX {
+        effective.format.depth
+    } else {
+        args.depth
+    };
+    let tree_max_entries = effective.format.tree_max_entries;
 
     // Initialize tracing if verbose
     if args.verbose {
@@ -40,21 +107,67 @@ fn main() -> Result<()> {
     // Discover git repos for all paths
     let git_repos = GitRepo::discover_all(&args.paths)?;
 
+    // Tree views need recursion; normal listings only walk one level.
+    let walk_depth = match effective_format {
+        OutputFormat::Tree => {
+            if tree_depth == usize::MAX {
+                None
+            } else {
+                Some(tree_depth)
+            }
+        }
+        _ if args.recursive => None,
+        _ => Some(1),
+    };
+
     // Collect all entries
-    let entries = collect_entries(&args.paths, &args, &git_repos)?;
+    let include_git = args.git || effective.display.show_git;
+    let group_dirs_first = args.group_dirs_first || effective.display.group_dirs_first;
+    let entries = collect_entries(
+        &args.paths,
+        &args,
+        &git_repos,
+        walk_depth,
+        include_git,
+        group_dirs_first,
+    )?;
 
-    // Format and output
-    let format_opts = FormatOptions::from_args(&args);
+    // Format and output - merge config with CLI args (CLI wins)
+    let format_opts = FormatOptions::from_args_and_config(&args, &config);
 
-    match args.effective_format() {
-        OutputFormat::Default => print_entries(&entries, &format_opts, &args)?,
-        OutputFormat::Long => print_entries(&entries, &format_opts, &args)?,
-        OutputFormat::Tree => print_tree(&entries, &format_opts, &args)?,
+    match effective_format {
+        OutputFormat::Default => print_entries(&entries, &format_opts, &args, false)?,
+        OutputFormat::Long => print_entries(&entries, &format_opts, &args, true)?,
+        OutputFormat::Tree => print_trees(
+            &entries,
+            &format_opts,
+            tree_depth,
+            &args.paths,
+            tree_max_entries,
+        )?,
         OutputFormat::Json => print_json(&entries, &format_opts)?,
         OutputFormat::Csv => print_csv(&entries, &format_opts)?,
     }
 
     Ok(())
+}
+
+/// Detect whether the user explicitly asked for an output format on the CLI.
+///
+/// This must handle combined short flags such as `-la` and `-lT`.
+fn explicit_format_requested() -> bool {
+    std::env::args().skip(1).any(|arg| {
+        if let Some(long) = arg.strip_prefix("--") {
+            long == "long"
+                || long == "tree"
+                || long == "format"
+                || long.starts_with("format=")
+        } else if arg.starts_with('-') && arg.len() > 1 {
+            arg[1..].chars().any(|c| matches!(c, 'l' | 'T' | 'O'))
+        } else {
+            false
+        }
+    })
 }
 
 fn print_json(entries: &[EntryData], opts: &FormatOptions) -> Result<()> {
@@ -70,4 +183,48 @@ fn print_csv(entries: &[EntryData], opts: &FormatOptions) -> Result<()> {
         println!("{}", entry.to_csv(opts));
     }
     Ok(())
+}
+
+fn generate_default_config() {
+    let config = r###"# lsr configuration file
+# Place at ~/.config/lsr/config.toml or .lsr.toml in project root
+
+[display]
+# icons = "auto"        # auto | always | never
+# color = "auto"        # auto | always | never
+# human_readable = true
+# show_git = false      # opt-in; also enabled by --git
+# group_dirs_first = true
+
+[format]
+# default = "default"   # default | long | tree | json | csv
+# time_style = "locale" # iso | locale | relative | full
+# depth = 1             # tree depth; omit for unlimited
+# tree_max_entries = 100  # auto-fallback to regular listing if exceeded
+
+[colors]
+# Colors use truecolor hex (e.g., "#5fafff")
+# dir = "#5fafff"
+# exec = "#5fd75f"
+# symlink = "#af5fff"
+# file = "#d0d0d0"
+# git_modified = "#fac200"
+# git_added = "#5fd75f"
+# git_deleted = "#ff5f5f"
+# git_untracked = "#ffaf00"
+# git_ignored = "#606060"
+# git_renamed = "#5fafff"
+# git_conflicted = "#ff00ff"
+
+# Per-directory overrides (glob patterns).
+# `*` matches within one path component; `**` crosses directories.
+# [per_directory."~/projects/*"]
+# format = "tree"
+# depth = 2
+# icons = "always"
+
+# [per_directory."~/.config"]
+# icons = "never"
+"###;
+    println!("{}", config);
 }

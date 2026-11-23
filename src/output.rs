@@ -6,10 +6,15 @@ use crate::fs::{EntryData, FileType};
 use crate::format::{colorize_name, format_entry_long, FormatOptions};
 use crate::icons::get_icon;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Print entries in default/long format
-pub fn print_entries(entries: &[EntryData], opts: &FormatOptions, args: &Args) -> Result<()> {
+pub fn print_entries(
+    entries: &[EntryData],
+    opts: &FormatOptions,
+    args: &Args,
+    long: bool,
+) -> Result<()> {
     if entries.is_empty() {
         return Ok(());
     }
@@ -37,44 +42,81 @@ pub fn print_entries(entries: &[EntryData], opts: &FormatOptions, args: &Args) -
 
         // Convert Vec<&EntryData> to Vec<EntryData> for printing
         let owned_entries: Vec<EntryData> = dir_entries.into_iter().cloned().collect();
-        
-        if args.effective_format() == crate::cli::OutputFormat::Long || args.long {
+
+        if long {
             print_long(&owned_entries, opts)?;
         } else {
-            print_default(&owned_entries, opts)?;
+            print_default(&owned_entries, opts, args.one_line)?;
         }
     }
 
     Ok(())
 }
 
-/// Print in default (columnar) format
-fn print_default(entries: &[EntryData], opts: &FormatOptions) -> Result<()> {
+/// Render one entry and return its styled text plus visible width.
+fn render_entry(entry: &EntryData, opts: &FormatOptions) -> (String, usize) {
     use unicode_width::UnicodeWidthStr;
 
+    let icon = if opts.show_icons {
+        get_icon(&entry.path, entry.file_type, true)
+    } else {
+        ""
+    };
+
+    let visible = if opts.show_icons && !icon.is_empty() {
+        format!("{} {}", icon, entry.name)
+    } else {
+        entry.name.clone()
+    };
+
+    let mut width = UnicodeWidthStr::width(visible.as_str());
+
+    let mut rendered = if opts.use_color {
+        colorize_name(
+            &visible,
+            entry.file_type,
+            entry.permissions,
+            &opts.colors,
+        )
+    } else {
+        visible
+    };
+
+    if opts.classify {
+        let marker = entry.file_type.classify_char(entry.permissions);
+        if marker != ' ' {
+            rendered.push(marker);
+            width += 1;
+        }
+    }
+
+    (rendered, width)
+}
+
+/// Print in default (columnar) format
+fn print_default(entries: &[EntryData], opts: &FormatOptions, one_line: bool) -> Result<()> {
     if entries.is_empty() {
         return Ok(());
     }
 
-    // Calculate name widths
-    let max_name_width = entries.iter()
-        .map(|e| {
-            let icon = if opts.show_icons {
-                get_icon(&e.path, e.file_type, true)
-            } else {
-                ""
-            };
-            let w = UnicodeWidthStr::width(e.name.as_str());
-            if opts.show_icons && !icon.is_empty() {
-                w + UnicodeWidthStr::width(icon) + 1
-            } else {
-                w
-            }
-        })
+    let rendered: Vec<(String, usize)> = entries
+        .iter()
+        .map(|entry| render_entry(entry, opts))
+        .collect();
+
+    if one_line {
+        for (text, _) in &rendered {
+            println!("{}", text);
+        }
+        return Ok(());
+    }
+
+    let max_name_width = rendered
+        .iter()
+        .map(|(_, width)| *width)
         .max()
         .unwrap_or(0);
-
-    let col_width = max_name_width + 2; // padding
+    let col_width = max_name_width + 2;
     let cols = (opts.term_width / col_width).max(1);
     let rows = (entries.len() + cols - 1) / cols;
 
@@ -83,41 +125,16 @@ fn print_default(entries: &[EntryData], opts: &FormatOptions) -> Result<()> {
         let mut line = String::new();
         for col in 0..cols {
             let idx = col * rows + row;
-            if idx >= entries.len() {
+            if idx >= rendered.len() {
                 break;
             }
-            let entry = &entries[idx];
-            
-            let icon = if opts.show_icons {
-                get_icon(&entry.path, entry.file_type, true)
-            } else {
-                ""
-            };
-            
-            let name = if opts.show_icons && !icon.is_empty() {
-                format!("{} {}", icon, entry.name)
-            } else {
-                entry.name.clone()
-            };
 
-            let colored = if opts.use_color {
-                colorize_name(&name, entry.file_type, entry.permissions)
-            } else {
-                name
-            };
+            let (text, width) = &rendered[idx];
+            line.push_str(text);
 
-            let classify = if opts.classify {
-                entry.file_type.classify_char().to_string()
-            } else {
-                String::new()
-            };
-
-            let entry_str = format!("{}{}", colored, classify);
-            let width = UnicodeWidthStr::width(entry_str.as_str());
-            line.push_str(&entry_str);
-            
             if col < cols - 1 {
-                let padding = col_width - width;
+                // `width` is the visible width (no ANSI escapes), so this is safe.
+                let padding = col_width.saturating_sub(*width);
                 line.push_str(&" ".repeat(padding));
             }
         }
@@ -136,16 +153,66 @@ fn print_long(entries: &[EntryData], opts: &FormatOptions) -> Result<()> {
     Ok(())
 }
 
-/// Print entries as a tree
-pub fn print_tree(entries: &[EntryData], opts: &FormatOptions, args: &Args) -> Result<()> {
-    // Build tree structure
-    let mut tree = TreeNode::new(Path::new("."));
-    
-    for entry in entries {
-        tree.insert(&entry.path, entry);
+/// Print entries as one tree per root path.
+/// Falls back to regular listing if top-level entry count exceeds `tree_max_entries`.
+pub fn print_trees(
+    entries: &[EntryData],
+    opts: &FormatOptions,
+    depth: usize,
+    roots: &[PathBuf],
+    tree_max_entries: usize,
+) -> Result<()> {
+    let roots: Vec<PathBuf> = if roots.is_empty() {
+        vec![PathBuf::from(".")]
+    } else {
+        roots.to_vec()
+    };
+
+    for (index, root) in roots.iter().enumerate() {
+        if roots.len() > 1 {
+            if index > 0 {
+                println!();
+            }
+            println!("{}:", root.display());
+        }
+
+        // Count top-level entries for this root
+        let top_level: Vec<&EntryData> = entries
+            .iter()
+            .filter(|e| {
+                e.path.strip_prefix(root)
+                    .map(|p| p.components().count() == 1)
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        if top_level.len() > tree_max_entries {
+            // Too many entries - fall back to regular listing
+            eprintln!(
+                "lsr: tree view skipped for {} ({} entries, limit {})",
+                root.display(),
+                top_level.len(),
+                tree_max_entries
+            );
+            let owned: Vec<EntryData> = top_level.into_iter().cloned().collect();
+            print_default(&owned, opts, false)?;
+            continue;
+        }
+
+        let mut tree = TreeNode::new(root);
+        for entry in entries {
+            if let Ok(relative) = entry.path.strip_prefix(root) {
+                if relative.as_os_str().is_empty() {
+                    continue;
+                }
+                tree.insert(relative, entry);
+            }
+        }
+
+        tree.print(opts, depth, 0, true, String::new())?;
     }
 
-    tree.print(opts, args.depth, 0, true, String::new())
+    Ok(())
 }
 
 struct TreeNode {
@@ -217,7 +284,7 @@ impl TreeNode {
             };
 
             let colored = if opts.use_color {
-                colorize_name(&name, entry.file_type, entry.permissions)
+                colorize_name(&name, entry.file_type, entry.permissions, &opts.colors)
             } else {
                 name
             };
@@ -231,7 +298,7 @@ impl TreeNode {
                 self.name.clone()
             };
             let colored = if opts.use_color {
-                colorize_name(&name, FileType::Directory, 0o755)
+                colorize_name(&name, FileType::Directory, 0o755, &opts.colors)
             } else {
                 name
             };

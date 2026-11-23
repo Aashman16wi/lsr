@@ -97,7 +97,6 @@ pub fn get_icon(path: &Path, file_type: FileType, show_icons: bool) -> &'static 
                 
                 // Images
                 "png" | "jpg" | "jpeg" | "gif" | "bmp" | "tiff" | "tif" | "webp" | "avif" | "ico" => "󰈟",
-                "svg" => "󰜡",
                 "psd" | "xcf" => "󰏘",
                 
                 // Video

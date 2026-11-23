@@ -1,6 +1,6 @@
 //! Git integration for repository status
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -100,10 +100,6 @@ impl GitRepo {
 
         // If not found in output, it's unmodified
         Some(GitStatus::Unmodified)
-    }
-
-    pub fn workdir(&self) -> &Path {
-        &self.workdir
     }
 }
 

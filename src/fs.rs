@@ -19,6 +19,7 @@ pub struct EntryData {
     pub name: String,
     pub file_type: FileType,
     pub size: u64,
+    pub total_size: u64,  // For --du: total size of directory tree
     pub blocks: u64,
     pub permissions: u32,
     pub nlink: u64,
@@ -107,11 +108,11 @@ impl FileType {
             .unwrap_or(FileType::Unknown)
     }
 
-    pub fn classify_char(&self) -> char {
+    pub fn classify_char(&self, perms: u32) -> char {
         match self {
             FileType::Directory => '/',
             FileType::Symlink => '@',
-            FileType::Regular => '*',
+            FileType::Regular if perms & 0o111 != 0 => '*',
             FileType::Fifo => '|',
             FileType::Socket => '=',
             _ => ' ',
@@ -119,29 +120,50 @@ impl FileType {
     }
 }
 
-/// Collect all entries for the given paths
-pub fn collect_entries(paths: &[PathBuf], args: &Args, git_repos: &HashMap<PathBuf, GitRepo>) -> Result<Vec<EntryData>> {
+/// Collect all entries for the given paths.
+///
+/// `max_depth` controls how deep the walker descends:
+/// `Some(1)` for a normal listing, `Some(n)` for a depth-limited tree,
+/// and `None` for a fully recursive listing.
+pub fn collect_entries(
+    paths: &[PathBuf],
+    args: &Args,
+    git_repos: &HashMap<PathBuf, GitRepo>,
+    max_depth: Option<usize>,
+    include_git: bool,
+    group_dirs_first: bool,
+) -> Result<Vec<EntryData>> {
     let mut all_entries = Vec::new();
 
     for path in paths {
-        let entries = collect_single_path(path, args)?;
+        let entries = collect_single_path(path, args, max_depth)?;
         all_entries.extend(entries);
     }
 
     // Add git status if enabled
-    if args.git && !git_repos.is_empty() {
+    if include_git && !git_repos.is_empty() {
         for entry in &mut all_entries {
             entry.git_status = get_git_status(&entry.path, git_repos);
         }
     }
 
     // Sort entries
-    sort_entries(&mut all_entries, args);
+    sort_entries(&mut all_entries, args, group_dirs_first);
+
+    // Filter by content grep if requested
+    if let Some(ref pattern) = args.grep_pattern {
+        filter_by_grep(&mut all_entries, pattern)?;
+    }
+
+    // Calculate directory sizes if --du is enabled
+    if args.du {
+        calculate_total_sizes(&mut all_entries);
+    }
 
     Ok(all_entries)
 }
 
-fn collect_single_path(path: &Path, args: &Args) -> Result<Vec<EntryData>> {
+fn collect_single_path(path: &Path, args: &Args, max_depth: Option<usize>) -> Result<Vec<EntryData>> {
     let mut entries = Vec::new();
 
     // Check if path exists
@@ -153,13 +175,17 @@ fn collect_single_path(path: &Path, args: &Args) -> Result<Vec<EntryData>> {
 
     if metadata.is_dir() && !args.dereference {
         // It's a directory - walk it
-        let walker = build_walker(path, args);
+        let walker = build_walker(path, args, max_depth);
         
         if args.no_parallel || args.threads == 1 {
             // Sequential
             for result in walker {
                 match result {
                     Ok(entry) => {
+                        // The walker yields the root directory itself; skip it.
+                        if entry.depth() == 0 {
+                            continue;
+                        }
                         if let Some(entry_data) = process_entry(&entry, args)? {
                             entries.push(entry_data);
                         }
@@ -178,6 +204,9 @@ fn collect_single_path(path: &Path, args: &Args) -> Result<Vec<EntryData>> {
             for result in walker {
                 match result {
                     Ok(entry) => {
+                        if entry.depth() == 0 {
+                            continue;
+                        }
                         chunk.push(entry);
                         if chunk.len() >= 10000 {
                             // Process chunk in parallel
@@ -223,7 +252,7 @@ fn collect_single_path(path: &Path, args: &Args) -> Result<Vec<EntryData>> {
     Ok(entries)
 }
 
-fn build_walker(root: &Path, args: &Args) -> Walk {
+fn build_walker(root: &Path, args: &Args, max_depth: Option<usize>) -> Walk {
     let mut builder = WalkBuilder::new(root);
     builder
         .hidden(!args.all && !args.almost_all)
@@ -233,7 +262,7 @@ fn build_walker(root: &Path, args: &Args) -> Walk {
         .git_exclude(true)
         .ignore(true)
         .require_git(false)
-        .max_depth(if args.recursive { None } else { Some(1) })
+        .max_depth(max_depth)
         .follow_links(args.dereference);
 
     // Add custom ignore patterns
@@ -302,6 +331,7 @@ fn process_single_path(
         name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
         file_type,
         size: metadata.len(),
+        total_size: metadata.len(),  // Default to file size
         blocks: metadata.blocks(),
         permissions: metadata.mode() & 0o7777,
         nlink: metadata.nlink(),
@@ -345,9 +375,9 @@ fn get_git_status(path: &Path, git_repos: &HashMap<PathBuf, GitRepo>) -> Option<
     None
 }
 
-fn sort_entries(entries: &mut [EntryData], args: &Args) {
+fn sort_entries(entries: &mut [EntryData], args: &Args, group_dirs_first: bool) {
     let reverse = args.reverse;
-    let group_dirs = args.group_dirs_first;
+    let group_dirs = group_dirs_first;
 
     entries.sort_by(|a, b| {
         // Group directories first
@@ -379,6 +409,57 @@ fn sort_entries(entries: &mut [EntryData], args: &Args) {
 
         if reverse { cmp.reverse() } else { cmp }
     });
+
+    // Apply grouping if requested (--group)
+    if let Some(ref group_mode) = args.group_by {
+        apply_grouping(entries, group_mode);
+    }
+}
+
+/// Apply grouping to entries (--group ext|date|size)
+fn apply_grouping(entries: &mut [EntryData], mode: &str) {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    match mode {
+        "ext" => {
+            // Group by file extension
+            entries.sort_by(|a, b| {
+                let a_ext = a.path.extension().and_then(|s| s.to_str()).unwrap_or("");
+                let b_ext = b.path.extension().and_then(|s| s.to_str()).unwrap_or("");
+                a_ext.cmp(b_ext).then_with(|| a.name.cmp(&b.name))
+            });
+        }
+        "date" => {
+            // Group by modification date (day)
+            entries.sort_by(|a, b| {
+                let a_day = a.modified.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() / 86400;
+                let b_day = b.modified.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() / 86400;
+                b_day.cmp(&a_day).then_with(|| a.name.cmp(&b.name)) // newest first
+            });
+        }
+        "size" => {
+            // Group by size buckets
+            entries.sort_by(|a, b| {
+                let a_bucket = size_bucket(a.size);
+                let b_bucket = size_bucket(b.size);
+                b_bucket.cmp(&a_bucket).then_with(|| a.size.cmp(&b.size)) // largest first
+            });
+        }
+        _ => {}
+    }
+}
+
+fn size_bucket(size: u64) -> u8 {
+    if size == 0 { return 0; }
+    if size < 1_024 { return 1; }           // < 1KB
+    if size < 10_24 * 1_024 { return 2; }   // < 10KB
+    if size < 100 * 1_024 { return 3; }     // < 100KB
+    if size < 1_024 * 1_024 { return 4; }   // < 1MB
+    if size < 10 * 1_024 * 1_024 { return 5; } // < 10MB
+    if size < 100 * 1_024 * 1_024 { return 6; } // < 100MB
+    if size < 1_024 * 1_024 * 1_024 { return 7; } // < 1GB
+    8 // >= 1GB
 }
 
 fn get_time_field(entry: &EntryData, field: TimeField) -> SystemTime {
@@ -398,6 +479,7 @@ impl EntryData {
             "name": self.name,
             "path": self.path.to_string_lossy(),
             "size": self.size,
+            "total_size": self.total_size,
             "blocks": self.blocks,
             "permissions": format!("{:o}", self.permissions),
             "nlink": self.nlink,
@@ -438,4 +520,81 @@ impl EntryData {
             self.git_status.map(|s| format!("{:?}", s).to_lowercase()).unwrap_or_default(),
         )
     }
+}
+
+/// Calculate total sizes for directories (used by --du).
+/// Uses a post-order traversal: sum up child sizes into parents.
+fn calculate_total_sizes(entries: &mut [EntryData]) {
+    // Map from directory path to index in entries
+    let mut dir_indices: HashMap<PathBuf, Vec<usize>> = HashMap::new();
+    for (idx, entry) in entries.iter().enumerate() {
+        if entry.file_type == FileType::Directory {
+            dir_indices.entry(entry.path.clone()).or_default().push(idx);
+        }
+    }
+
+    // Sort paths by depth (deepest first) so we accumulate bottom-up
+    let mut sorted_dirs: Vec<PathBuf> = dir_indices.keys().cloned().collect();
+    sorted_dirs.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
+
+    // Map from path to its total size
+    let mut total_sizes: HashMap<PathBuf, u64> = HashMap::new();
+
+    // Initialize with each entry's own size
+    for entry in entries.iter() {
+        total_sizes.insert(entry.path.clone(), entry.size);
+    }
+
+    // Accumulate child sizes into parents
+    for dir_path in sorted_dirs {
+        let dir_size = *total_sizes.get(&dir_path).unwrap_or(&0);
+        // Find parent directory
+        if let Some(parent) = dir_path.parent() {
+            *total_sizes.entry(parent.to_path_buf()).or_insert(0) += dir_size;
+        }
+    }
+
+    // Write back total sizes
+    for entry in entries.iter_mut() {
+        if let Some(&total) = total_sizes.get(&entry.path) {
+            entry.total_size = total;
+        }
+    }
+}
+
+/// Filter entries by content grep pattern.
+/// Only searches regular text files (skips binary, large files).
+pub fn filter_by_grep(entries: &mut Vec<EntryData>, pattern: &str) -> Result<()> {
+    use std::io::Read;
+
+    let pattern_lower = pattern.to_lowercase();
+
+    entries.retain(|entry| {
+        // Only grep regular files, skip directories, symlinks, etc.
+        if entry.file_type != FileType::Regular {
+            return true; // Keep non-regular files (dirs, etc.)
+        }
+
+        // Skip large files (>10MB)
+        if entry.size > 10_000_000 {
+            return true;
+        }
+
+        // Skip binary files (check first 512 bytes for null bytes)
+        if let Ok(mut file) = std::fs::File::open(&entry.path) {
+            let mut buf = [0u8; 512];
+            let n = file.read(&mut buf).unwrap_or(0);
+            if buf[..n].contains(&0) {
+                return true; // Likely binary, keep it
+            }
+
+            // Check if pattern matches (case-insensitive)
+            let content = String::from_utf8_lossy(&buf[..n]).to_lowercase();
+            content.contains(&pattern_lower)
+        } else {
+            true // Can't read, keep it
+        }
+    });
+
+    Ok(())
 }
