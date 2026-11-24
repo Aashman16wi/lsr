@@ -2,13 +2,12 @@
 
 use anyhow::{Context, Result};
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::BufReader;
 use std::path::Path;
 
 use crate::cli::Args;
 use crate::fs::{EntryData, FileType};
 use crate::format::FormatOptions;
-use crate::output::{print_entries, print_trees};
 use std::time::SystemTime;
 
 /// Check if a path is an archive file we can read
@@ -233,7 +232,7 @@ fn list_tar_zst(path: &Path) -> Result<Vec<EntryData>> {
 }
 
 fn to_system_time(dt: zip::DateTime) -> SystemTime {
-    use chrono::{TimeZone, Utc};
+    use chrono::Utc;
     let naive = chrono::NaiveDate::from_ymd_opt(dt.year() as i32, dt.month(), dt.day())
         .and_then(|d| d.and_hms_opt(dt.hour(), dt.minute(), dt.second()))
         .unwrap_or_else(|| chrono::Utc::now().naive_utc());

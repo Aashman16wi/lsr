@@ -30,6 +30,15 @@ users = "0.11"
 # File type detection and icons
 mime_guess = "2.0"
 
+# Archive support
+zip = "0.6"
+tar = "0.4"
+flate2 = "1.0"
+zstd = "0.13"
+
+# File watching
+notify = "6.1"
+
 # Date/time formatting
 chrono = { version = "0.4", features = ["serde"] }
 
@@ -48,10 +57,6 @@ serde_json = "1.0"
 
 # Unicode width for proper column alignment
 unicode-width = "0.1"
-
-# TUI
-ratatui = "0.28"
-crossterm = "0.28"
 
 # Error handling
 anyhow = "1.0"

@@ -418,8 +418,6 @@ fn sort_entries(entries: &mut [EntryData], args: &Args, group_dirs_first: bool) 
 
 /// Apply grouping to entries (--group ext|date|size)
 fn apply_grouping(entries: &mut [EntryData], mode: &str) {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
 
     match mode {
         "ext" => {

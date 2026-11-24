@@ -8,10 +8,9 @@ use std::sync::mpsc::channel;
 
 use crate::cli::Args;
 use crate::config::LsrConfig;
-use crate::fs::{collect_entries, EntryData};
-use crate::git::GitRepo;
+use crate::fs::collect_entries;
 use crate::format::FormatOptions;
-use crate::output::{print_entries, print_trees};
+use crate::output::print_entries;
 
 /// Run watch mode
 pub fn run_watch(args: Args) -> Result<()> {
