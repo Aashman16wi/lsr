@@ -1,588 +1,119 @@
-//! File icons and symbols
+//! File icons and git status symbols.
 
 use crate::fs::FileType;
 use std::path::Path;
 
-/// Get icon for a file based on name, extension, and type
+/// Get the icon for a file based on its name, extension, and type.
 pub fn get_icon(path: &Path, file_type: FileType, show_icons: bool) -> &'static str {
     if !show_icons {
         return "";
     }
 
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
 
-    // Special filenames first
+    // Exact filenames first. These are more useful than extension matches
+    // for files like Cargo.toml or Dockerfile.
     let icon = match name {
         // Git
         ".gitignore" | ".gitmodules" | ".gitattributes" | ".gitignore_global" | ".gitconfig" => "󰊢",
-        // Docker
+        // Docker / containers
         ".dockerignore" => "󰡨",
-        // Editor
+        "Dockerfile"
+        | "docker-compose.yml"
+        | "docker-compose.yaml"
+        | "docker-compose.override.yml" => "󰡨",
+        // Editors
         ".editorconfig" => "",
+        ".vscode" => "󰨞",
+        ".idea" => "",
+        ".devcontainer" => "󰡨",
         // Environment
         ".env" | ".env.local" | ".env.production" | ".env.development" | ".env.test" => "",
-        // Linting/Format
+        // Linting / formatting
         ".eslintrc" | ".eslintrc.js" | ".eslintrc.json" | ".eslintrc.yaml" | ".eslintrc.yml" => "󰱺",
-        ".prettierrc" | ".prettierrc.js" | ".prettierrc.json" | ".prettierrc.yaml" | ".prettierrc.yml" => "",
+        ".prettierrc" | ".prettierrc.js" | ".prettierrc.json" | ".prettierrc.yaml"
+        | ".prettierrc.yml" => "",
         ".rustfmt.toml" => "",
-        // CI/CD
+        // CI
         ".github" => "",
         ".gitlab" => "",
         ".circleci" => "󰏓",
         ".travis.yml" => "󰯅",
-        // Editors
-        ".vscode" => "󰨞",
-        ".idea" => "",
-        // Containers
-        ".devcontainer" => "󰡨",
-        // Task runners
+        // Task runners / toolchains
         "justfile" | "Justfile" => "",
         "Taskfile.yml" | "Taskfile.yaml" => "󰎙",
         "mise.toml" | ".mise.toml" | ".tool-versions" => "󰏔",
         "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
         "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
         "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
+        // Language manifests
+        "pyproject.toml"
+        | "poetry.lock"
+        | "Pipfile"
+        | "Pipfile.lock"
+        | "requirements.txt"
+        | "requirements-dev.txt" => "󰌠",
         "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
         "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
         "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
+        "pom.xml"
+        | "build.gradle"
+        | "build.gradle.kts"
+        | "settings.gradle"
+        | "settings.gradle.kts"
+        | "build.xml"
+        | "ivy.xml" => "󰬷",
         "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Config files
-        ".gitignore" | ".gitmodules" | ".gitattributes" | ".gitignore_global" | ".gitconfig" => "󰊢",
-        ".dockerignore" => "󰡨",
-        ".editorconfig" => "",
-        ".env" | ".env.local" | ".env.production" | ".env.development" | ".env.test" => "",
-        ".eslintrc" | ".eslintrc.js" | ".eslintrc.json" | ".eslintrc.yaml" | ".eslintrc.yml" => "󰱺",
-        ".prettierrc" | ".prettierrc.js" | ".prettierrc.json" | ".prettierrc.yaml" | ".prettierrc.yml" => "",
-        ".rustfmt.toml" => "",
-        // CI/CD
-        ".github" => "",
-        ".gitlab" => "",
-        ".circleci" => "󰏓",
-        ".travis.yml" => "󰯅",
-        // Editors
-        ".vscode" => "󰨞",
-        ".idea" => "",
-        // Containers
-        ".devcontainer" => "󰡨",
-        // Task runners
-        "justfile" | "Justfile" => "",
-        "Taskfile.yml" | "Taskfile.yaml" => "󰎙",
-        "mise.toml" | ".mise.toml" | ".tool-versions" => "󰏔",
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Config files
-        ".gitignore" | ".gitmodules" | ".gitattributes" | ".gitignore_global" | ".gitconfig" => "󰊢",
-        ".dockerignore" => "󰡨",
-        ".editorconfig" => "",
-        ".env" | ".env.local" | ".env.production" | ".env.development" | ".env.test" => "",
-        ".eslintrc" | ".eslintrc.js" | ".eslintrc.json" | ".eslintrc.yaml" | ".eslintrc.yml" => "󰱺",
-        ".prettierrc" | ".prettierrc.js" | ".prettierrc.json" | ".prettierrc.yaml" | ".prettierrc.yml" => "",
-        ".rustfmt.toml" => "",
-        // CI/CD
-        ".github" => "",
-        ".gitlab" => "",
-        ".circleci" => "󰏓",
-        ".travis.yml" => "󰯅",
-        // Editors
-        ".vscode" => "󰨞",
-        ".idea" => "",
-        // Containers
-        ".devcontainer" => "󰡨",
-        // Task runners
-        "justfile" | "Justfile" => "",
-        "Taskfile.yml" | "Taskfile.yaml" => "󰎙",
-        "mise.toml" | ".mise.toml" | ".tool-versions" => "󰏔",
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Config files
-        ".gitignore" | ".gitmodules" | ".gitattributes" | ".gitignore_global" | ".gitconfig" => "󰊢",
-        ".dockerignore" => "󰡨",
-        ".editorconfig" => "",
-        ".env" | ".env.local" | ".env.production" | ".env.development" | ".env.test" => "",
-        ".eslintrc" | ".eslintrc.js" | ".eslintrc.json" | ".eslintrc.yaml" | ".eslintrc.yml" => "󰱺",
-        ".prettierrc" | ".prettierrc.js" | ".prettierrc.json" | ".prettierrc.yaml" | ".prettierrc.yml" => "",
-        ".rustfmt.toml" => "",
-        // CI/CD
-        ".github" => "",
-        ".gitlab" => "",
-        ".circleci" => "󰏓",
-        ".travis.yml" => "󰯅",
-        // Editors
-        ".vscode" => "󰨞",
-        ".idea" => "",
-        // Containers
-        ".devcontainer" => "󰡨",
-        // Task runners
-        "justfile" | "Justfile" => "",
-        "Taskfile.yml" | "Taskfile.yaml" => "󰎙",
-        "mise.toml" | ".mise.toml" | ".tool-versions" => "󰏔",
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Docs
-        "README.md" | "README.txt" | "README.rst" => "",
-        "LICENSE" | "LICENSE.md" | "LICENSE.txt" | "COPYING" => "",
-        "CHANGELOG.md" | "CHANGELOG.txt" | "CHANGES.md" => "",
-        "CONTRIBUTING.md" | "CONTRIBUTING.txt" => "󰍔",
-        "SECURITY.md" | "SECURITY.txt" => "󰌾",
-        "CODE_OF_CONDUCT.md" => "󰍔",
-        // Build
-        "Makefile" | "makefile" | "CMakeLists.txt" | "meson.build" | "build.zig" => "",
-        // Docker
-        "Dockerfile" | "docker-compose.yml" | "docker-compose.yaml" | "docker-compose.override.yml" => "󰡨",
-        // Rust
+        // Rust / Node
         "Cargo.toml" | "Cargo.lock" => "",
-        // Node.js
-        "package.json" | "package-lock.json" | "pnpm-lock.yaml" | "yarn.lock" | "bun.lockb" | "bun.lock" => "󰎙",
+        "package.json" | "package-lock.json" | "pnpm-lock.yaml" | "yarn.lock" => "󰎙",
         "tsconfig.json" | "jsconfig.json" => "",
         // Bundlers
-        "webpack.config.js" | "webpack.config.ts" | "vite.config.ts" | "vite.config.js" | "rollup.config.js" | "rollup.config.ts" | "turbo.json" => "󰜫",
-        // Build
+        "webpack.config.js" | "webpack.config.ts" | "vite.config.ts" | "vite.config.js"
+        | "rollup.config.js" | "rollup.config.ts" | "turbo.json" => "󰜫",
+        // Build systems
         "Makefile" | "makefile" | "CMakeLists.txt" | "meson.build" | "build.zig" => "",
-        // Docker
-        "Dockerfile" | "docker-compose.yml" | "docker-compose.yaml" | "docker-compose.override.yml" => "󰡨",
-        ".devcontainer" => "󰡨",
-        // Docs
+        // Documentation
         "README.md" | "README.txt" | "README.rst" => "",
         "LICENSE" | "LICENSE.md" | "LICENSE.txt" | "COPYING" => "",
         "CHANGELOG.md" | "CHANGELOG.txt" | "CHANGES.md" => "",
-        "CONTRIBUTING.md" | "CONTRIBUTING.txt" => "󰍔",
+        "CONTRIBUTING.md" | "CONTRIBUTING.txt" | "CODE_OF_CONDUCT.md" => "󰍔",
         "SECURITY.md" | "SECURITY.txt" => "󰌾",
-        "CODE_OF_CONDUCT.md" => "󰍔",
-        // Git hosting
-        ".github" => "",
-        ".gitlab" => "",
-        // Editors
-        ".vscode" => "󰨞",
-        ".idea" => "",
-        // Containers/Tools
-        ".devcontainer" => "󰡨",
-        "justfile" | "Justfile" => "",
-        "Taskfile.yml" | "Taskfile.yaml" => "󰎙",
-        "mise.toml" | ".mise.toml" | ".tool-versions" => "󰏔",
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Nix
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Nix
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Config files
-        ".gitignore" | ".gitmodules" | ".gitattributes" | ".gitignore_global" | ".gitconfig" => "󰊢",
-        ".dockerignore" => "󰡨",
-        ".editorconfig" => "",
-        ".env" | ".env.local" | ".env.production" | ".env.development" | ".env.test" => "",
-        ".eslintrc" | ".eslintrc.js" | ".eslintrc.json" | ".eslintrc.yaml" | ".eslintrc.yml" => "󰱺",
-        ".prettierrc" | ".prettierrc.js" | ".prettierrc.json" | ".prettierrc.yaml" | ".prettierrc.yml" => "",
-        ".rustfmt.toml" => "",
-        // CI/CD
-        ".github" => "",
-        ".gitlab" => "",
-        ".circleci" => "󰏓",
-        ".travis.yml" => "󰯅",
-        // Editors
-        ".vscode" => "󰨞",
-        ".idea" => "",
-        // Containers
-        ".devcontainer" => "󰡨",
-        // Task runners
-        "justfile" | "Justfile" => "",
-        "Taskfile.yml" | "Taskfile.yaml" => "󰎙",
-        "mise.toml" | ".mise.toml" | ".tool-versions" => "󰏔",
-        // Nix
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Nix
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Config files
-        ".gitignore" | ".gitmodules" | ".gitattributes" | ".gitignore_global" | ".gitconfig" => "󰊢",
-        ".dockerignore" => "󰡨",
-        ".editorconfig" => "",
-        ".env" | ".env.local" | ".env.production" | ".env.development" | ".env.test" => "",
-        ".eslintrc" | ".eslintrc.js" | ".eslintrc.json" | ".eslintrc.yaml" | ".eslintrc.yml" => "󰱺",
-        ".prettierrc" | ".prettierrc.js" | ".prettierrc.json" | ".prettierrc.yaml" | ".prettierrc.yml" => "",
-        ".rustfmt.toml" => "",
-        // CI/CD
-        ".github" => "",
-        ".gitlab" => "",
-        ".circleci" => "󰏓",
-        ".travis.yml" => "󰯅",
-        // Editors
-        ".vscode" => "󰨞",
-        ".idea" => "",
-        // Containers
-        ".devcontainer" => "󰡨",
-        // Task runners
-        "justfile" | "Justfile" => "",
-        "Taskfile.yml" | "Taskfile.yaml" => "󰎙",
-        "mise.toml" | ".mise.toml" | ".tool-versions" => "󰏔",
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Nix
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Config files
-        ".gitignore" | ".gitmodules" | ".gitattributes" | ".gitignore_global" | ".gitconfig" => "󰊢",
-        ".dockerignore" => "󰡨",
-        ".editorconfig" => "",
-        ".env" | ".env.local" | ".env.production" | ".env.development" | ".env.test" => "",
-        ".eslintrc" | ".eslintrc.js" | ".eslintrc.json" | ".eslintrc.yaml" | ".eslintrc.yml" => "󰱺",
-        ".prettierrc" | ".prettierrc.js" | ".prettierrc.json" | ".prettierrc.yaml" | ".prettierrc.yml" => "",
-        ".rustfmt.toml" => "",
-        // CI/CD
-        ".github" => "",
-        ".gitlab" => "",
-        ".circleci" => "󰏓",
-        ".travis.yml" => "󰯅",
-        // Editors
-        ".vscode" => "󰨞",
-        ".idea" => "",
-        // Containers
-        ".devcontainer" => "󰡨",
-        // Task runners
-        "justfile" | "Justfile" => "",
-        "Taskfile.yml" | "Taskfile.yaml" => "󰎙",
-        "mise.toml" | ".mise.toml" | ".tool-versions" => "󰏔",
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Config files
-        ".gitignore" | ".gitmodules" | ".gitattributes" | ".gitignore_global" | ".gitconfig" => "󰊢",
-        ".dockerignore" => "󰡨",
-        ".editorconfig" => "",
-        ".env" | ".env.local" | ".env.production" | ".env.development" | ".env.test" => "",
-        ".eslintrc" | ".eslintrc.js" | ".eslintrc.json" | ".eslintrc.yaml" | ".eslintrc.yml" => "󰱺",
-        ".prettierrc" | ".prettierrc.js" | ".prettierrc.json" | ".prettierrc.yaml" | ".prettierrc.yml" => "",
-        ".rustfmt.toml" => "",
-        // CI/CD
-        ".github" => "",
-        ".gitlab" => "",
-        ".circleci" => "󰏓",
-        ".travis.yml" => "󰯅",
-        // Editors
-        ".vscode" => "󰨞",
-        ".idea" => "",
-        // Containers
-        ".devcontainer" => "󰡨",
-        // Task runners
-        "justfile" | "Justfile" => "",
-        "Taskfile.yml" | "Taskfile.yaml" => "󰎙",
-        "mise.toml" | ".mise.toml" | ".tool-versions" => "󰏔",
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Config files
-        ".gitignore" | ".gitmodules" | ".gitattributes" | ".gitignore_global" | ".gitconfig" => "󰊢",
-        ".dockerignore" => "󰡨",
-        ".editorconfig" => "",
-        ".env" | ".env.local" | ".env.production" | ".env.development" | ".env.test" => "",
-        ".eslintrc" | ".eslintrc.js" | ".eslintrc.json" | ".eslintrc.yaml" | ".eslintrc.yml" => "󰱺",
-        ".prettierrc" | ".prettierrc.js" | ".prettierrc.json" | ".prettierrc.yaml" | ".prettierrc.yml" => "",
-        ".rustfmt.toml" => "",
-        // CI/CD
-        ".github" => "",
-        ".gitlab" => "",
-        ".circleci" => "󰏓",
-        ".travis.yml" => "󰯅",
-        // Editors
-        ".vscode" => "󰨞",
-        ".idea" => "",
-        // Containers
-        ".devcontainer" => "󰡨",
-        // Task runners
-        "justfile" | "Justfile" => "",
-        "Taskfile.yml" | "Taskfile.yaml" => "󰎙",
-        "mise.toml" | ".mise.toml" | ".tool-versions" => "󰏔",
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        // Config files
-        ".gitignore" | ".gitmodules" | ".gitattributes" | ".gitignore_global" | ".gitconfig" => "󰊢",
-        ".dockerignore" => "󰡨",
-        ".editorconfig" => "",
-        ".env" | ".env.local" | ".env.production" | ".env.development" | ".env.test" => "",
-        ".eslintrc" | ".eslintrc.js" | ".eslintrc.json" | ".eslintrc.yaml" | ".eslintrc.yml" => "󰱺",
-        ".prettierrc" | ".prettierrc.js" | ".prettierrc.json" | ".prettierrc.yaml" | ".prettierrc.yml" => "",
-        ".rustfmt.toml" => "",
-        // CI/CD
-        ".github" => "",
-        ".gitlab" => "",
-        ".circleci" => "󰏓",
-        ".travis.yml" => "󰯅",
-        // Editors
-        ".vscode" => "󰨞",
-        ".idea" => "",
-        // Containers
-        ".devcontainer" => "󰡨",
-        // Task runners
-        "justfile" | "Justfile" => "",
-        "Taskfile.yml" | "Taskfile.yaml" => "󰎙",
-        "mise.toml" | ".mise.toml" | ".tool-versions" => "󰏔",
-        "flake.nix" | "flake.lock" => "󱄅",
-        // Deno
-        "deno.json" | "deno.jsonc" | "import_map.json" => "󰋯",
-        // Bun
-        "bun.lockb" | "bun.lock" => "󰎙",
-        // Python
-        "pyproject.toml" | "poetry.lock" | "Pipfile" | "Pipfile.lock" | "requirements.txt" | "requirements-dev.txt" => "󰌠",
-        // Go
-        "go.mod" | "go.sum" | "go.work" => "󰟓",
-        // PHP
-        "composer.json" | "composer.lock" => "󰌟",
-        // Ruby
-        "Gemfile" | "Gemfile.lock" => "󰴭",
-        // Java/Kotlin
-        "pom.xml" | "build.gradle" | "build.gradle.kts" | "settings.gradle" | "settings.gradle.kts" => "󰬷",
-        "build.xml" | "ivy.xml" => "󰬷",
-        // Bazel
-        "bazel" | "BUILD" | "WORKSPACE" | "BUILD.bazel" => "󰆧",
-        _ => "", // Not a special filename, check extension
+        _ => "",
     };
 
-    // By extension
+    if !icon.is_empty() {
+        return icon;
+    }
+
     match ext.as_str() {
         // Rust
         "rs" => "",
         "toml" => "",
 
-        // JavaScript/TypeScript
+        // JavaScript / TypeScript
         "js" | "jsx" | "mjs" | "cjs" => "󰌞",
         "ts" | "tsx" | "mts" | "cts" => "",
-        "json" => "",
-        "jsonc" => "",
+        "json" | "jsonc" => "",
 
         // Python
         "py" | "pyw" | "pyc" | "pyo" | "pyd" => "󰌠",
         "ipynb" => "󰠮",
-        "requirements.txt" | "setup.py" | "setup.cfg" | "pyproject.toml" | "pipfile" => "󰌠",
 
         // Go
         "go" | "mod" | "sum" => "󰟓",
 
-        // C/C++
+        // C / C++
         "c" | "h" => "",
         "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => "󰙲",
         "cs" => "󰌛",
 
-        // Java/Kotlin
+        // JVM
         "java" => "󰬷",
         "kt" | "kts" => "󰘦",
         "scala" => "󰜷",
@@ -594,25 +125,22 @@ pub fn get_icon(path: &Path, file_type: FileType, show_icons: bool) -> &'static 
         "xml" | "xsl" | "xslt" => "󰗀",
         "svg" => "󰜡",
 
-        // Shell/Scripts
+        // Shell
         "sh" | "bash" | "zsh" | "fish" => "",
         "ps1" | "psm1" => "󰨊",
         "bat" | "cmd" => "",
 
-        // Data/Config
+        // Config
         "yaml" | "yml" => "",
-        "ini" | "cfg" | "conf" => "",
+        "ini" | "cfg" | "conf" | "properties" => "",
         "env" => "",
-        "properties" => "",
 
-        // Database
-        "sql" => "󰆼",
-        "db" | "sqlite" | "sqlite3" => "󰆼",
+        // Databases
+        "sql" | "db" | "sqlite" | "sqlite3" => "󰆼",
 
         // Documentation
         "md" | "markdown" | "mdown" | "mkd" => "󰍔",
-        "rst" => "󰈙",
-        "txt" | "log" => "󰈙",
+        "rst" | "txt" | "log" => "󰈙",
         "tex" | "latex" => "󰊄",
         "pdf" => "󰈦",
 
@@ -636,7 +164,7 @@ pub fn get_icon(path: &Path, file_type: FileType, show_icons: bool) -> &'static 
         // Fonts
         "ttf" | "otf" | "woff" | "woff2" | "eot" => "󰛖",
 
-        // Other code
+        // Other languages
         "php" => "󰌟",
         "rb" | "rake" => "󰴭",
         "pl" | "pm" => "󰿠",
@@ -658,23 +186,17 @@ pub fn get_icon(path: &Path, file_type: FileType, show_icons: bool) -> &'static 
         "prolog" => "󰠵",
         "asm" | "s" => "󰘚",
 
-        _ => {
-            // By file type (fallback)
-            match file_type {
-                FileType::Directory => "󰉋",
-                FileType::Symlink => "󰉒",
-                FileType::BlockDevice => "󰋊",
-                FileType::CharDevice => "󰋊",
-                FileType::Fifo => "󰟛",
-                FileType::Socket => "󰟛",
-                FileType::Regular => "󰈙",
-                FileType::Unknown => "󰈙",
-            }
-        }
+        _ => match file_type {
+            FileType::Directory => "󰉋",
+            FileType::Symlink => "󰉒",
+            FileType::BlockDevice | FileType::CharDevice => "󰋊",
+            FileType::Fifo | FileType::Socket => "󰟛",
+            FileType::Regular | FileType::Unknown => "󰈙",
+        },
     }
 }
 
-/// Get color for git status
+/// RGB color for a git status.
 pub fn git_status_color(status: &crate::fs::GitStatus) -> (u8, u8, u8) {
     match status {
         crate::fs::GitStatus::Modified => (255, 170, 0),
@@ -682,14 +204,13 @@ pub fn git_status_color(status: &crate::fs::GitStatus) -> (u8, u8, u8) {
         crate::fs::GitStatus::Deleted => (255, 50, 50),
         crate::fs::GitStatus::Untracked => (255, 150, 0),
         crate::fs::GitStatus::Ignored => (128, 128, 128),
-        crate::fs::GitStatus::Renamed => (0, 200, 200),
-        crate::fs::GitStatus::Copied => (0, 200, 200),
+        crate::fs::GitStatus::Renamed | crate::fs::GitStatus::Copied => (0, 200, 200),
         crate::fs::GitStatus::Conflicted => (255, 0, 255),
         crate::fs::GitStatus::Unmodified => (100, 100, 100),
     }
 }
 
-/// Get icon for git status
+/// Icon for a git status.
 pub fn git_status_icon(status: &crate::fs::GitStatus) -> &'static str {
     match status {
         crate::fs::GitStatus::Modified => "󰷥",
@@ -701,5 +222,25 @@ pub fn git_status_icon(status: &crate::fs::GitStatus) -> &'static str {
         crate::fs::GitStatus::Copied => "󰅍",
         crate::fs::GitStatus::Conflicted => "󰈊",
         crate::fs::GitStatus::Unmodified => "",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn icons_are_optional() {
+        assert_eq!(get_icon(Path::new("main.rs"), FileType::Regular, false), "");
+    }
+
+    #[test]
+    fn known_filenames_and_extensions() {
+        assert_eq!(
+            get_icon(Path::new("Cargo.toml"), FileType::Regular, true),
+            ""
+        );
+        assert_eq!(get_icon(Path::new("main.rs"), FileType::Regular, true), "");
+        assert_eq!(get_icon(Path::new("src"), FileType::Directory, true), "󰉋");
     }
 }

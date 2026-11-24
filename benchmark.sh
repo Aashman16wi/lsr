@@ -1,49 +1,43 @@
 #!/usr/bin/env bash
-# Manual benchmark script for lsr vs eza vs lsd vs ls
+# Manual benchmark helper for lsr vs the system ls.
+#
+# This script is intentionally not advertised in the README. It is a local
+# tool for measuring changes on your own machine.
 
 set -euo pipefail
 
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-run_bench() {
-    local cmd="$1"
-    local name="$2"
-    echo -e "${BLUE}=== $name ===${NC}"
-    hyperfine --warmup 3 --runs 10 -i "$cmd"
-    echo
-}
+TARGET_DIR="${1:-.}"
 
-# Check tools
-for tool in lsr eza lsd ls hyperfine; do
+for tool in lsr ls hyperfine; do
     if ! command -v "$tool" >/dev/null 2>&1; then
-        echo "Missing: $tool"
+        echo "Missing required tool: $tool" >&2
         exit 1
     fi
 done
 
-TARGET_DIR="${1:-/home/aashmanr}"
+run_bench() {
+    local name="$1"
+    local cmd="$2"
 
-echo "Benchmarking on: $TARGET_DIR"
+    echo -e "${BLUE}=== ${name} ===${NC}"
+    hyperfine --warmup 3 --runs 10 "$cmd"
+    echo
+}
+
+echo -e "${GREEN}Benchmarking on:${NC} $TARGET_DIR"
 echo "=================================="
 
-run_bench "lsr $TARGET_DIR" "lsr (default)"
-run_bench "lsr -la $TARGET_DIR" "lsr -la"
-run_bench "lsr -la --du $TARGET_DIR" "lsr -la --du"
-run_bench "lsr -T --depth 2 $TARGET_DIR" "lsr -T --depth 2"
-run_bench "lsr --group-by ext $TARGET_DIR" "lsr --group-by ext"
-run_bench "lsr --grep fn $TARGET_DIR" "lsr --grep fn"
+run_bench "lsr (default)" "lsr $TARGET_DIR"
+run_bench "lsr -la" "lsr -la $TARGET_DIR"
+run_bench "lsr -la --git" "lsr -la --git $TARGET_DIR"
+run_bench "lsr -la --du" "lsr -la --du $TARGET_DIR"
+run_bench "lsr -T --depth 2" "lsr -T --depth 2 $TARGET_DIR"
+run_bench "lsr --group-by ext" "lsr --group-by ext $TARGET_DIR"
 
-run_bench "eza $TARGET_DIR" "eza (default)"
-run_bench "eza -la $TARGET_DIR" "eza -la"
-run_bench "eza -laR $TARGET_DIR" "eza -laR"
-run_bench "eza -T --depth 2 $TARGET_DIR" "eza -T --depth 2"
-
-run_bench "lsd $TARGET_DIR" "lsd (default)"
-run_bench "lsd -la $TARGET_DIR" "lsd -la"
-run_bench "lsd -T --depth 2 $TARGET_DIR" "lsd -T --depth 2"
-
-run_bench "ls -la $TARGET_DIR" "ls -la"
-run_bench "ls -laR $TARGET_DIR" "ls -laR"
+run_bench "ls (default)" "ls $TARGET_DIR"
+run_bench "ls -la" "ls -la $TARGET_DIR"
+run_bench "ls -laR" "ls -laR $TARGET_DIR"

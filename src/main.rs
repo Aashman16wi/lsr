@@ -2,37 +2,61 @@
 //!
 //! Usage: lsr [OPTIONS] [PATHS]...
 
+pub mod archive;
 pub mod cli;
+pub mod config;
+pub mod format;
 pub mod fs;
-pub mod output;
 pub mod git;
 pub mod icons;
-pub mod format;
-pub mod config;
-pub mod archive;
+pub mod output;
 pub mod watch;
 
 use anyhow::Result;
-use cli::{Args, OutputFormat};
 use clap::{CommandFactory, Parser};
+use cli::{Args, OutputFormat};
 use config::LsrConfig;
-use fs::{collect_entries, EntryData};
-use git::GitRepo;
-use output::{print_entries, print_trees};
 use format::FormatOptions;
+use fs::collect_entries;
+use git::GitRepo;
+use output::{print_csv, print_entries, print_json, print_trees};
 use std::io;
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
-    let explicit_format = explicit_format_requested();
+    reset_sigpipe();
 
     let args = Args::parse();
+
+    // Verbose logging is most useful for the long-running modes too.
+    if args.verbose {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::from_default_env()
+                    .add_directive("lsr=debug".parse()?),
+            )
+            .init();
+    }
 
     // Handle shell completion generation
     if let Some(shell) = args.completion {
         let mut cmd = Args::command();
         clap_complete::generate(shell, &mut cmd, "lsr", &mut io::stdout());
         return Ok(());
+    }
+
+    // An unknown theme would otherwise be silently ignored.
+    if let Some(theme) = &args.theme {
+        let themes = LsrConfig::builtin_themes();
+        if !themes.contains_key(theme) {
+            let mut names: Vec<&str> = themes.keys().map(String::as_str).collect();
+            names.sort_unstable();
+            anyhow::bail!(
+                "unknown theme '{}'; available themes: {}",
+                theme,
+                names.join(", ")
+            );
+        }
     }
 
     // Handle generate config
@@ -76,7 +100,7 @@ fn main() -> Result<()> {
     let effective = config.for_path(&primary_path);
 
     // Determine effective format (CLI > per-directory config > global config > default)
-    let effective_format = if explicit_format {
+    let effective_format = if args.explicit_format_requested() {
         args.effective_format()
     } else {
         match effective.format.default.as_str() {
@@ -95,14 +119,6 @@ fn main() -> Result<()> {
         args.depth
     };
     let tree_max_entries = effective.format.tree_max_entries;
-
-    // Initialize tracing if verbose
-    if args.verbose {
-        tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("lsr=debug".parse()?))
-            .init();
-    }
 
     // Discover git repos for all paths
     let git_repos = GitRepo::discover_all(&args.paths)?;
@@ -152,38 +168,18 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Detect whether the user explicitly asked for an output format on the CLI.
-///
-/// This must handle combined short flags such as `-la` and `-lT`.
-fn explicit_format_requested() -> bool {
-    std::env::args().skip(1).any(|arg| {
-        if let Some(long) = arg.strip_prefix("--") {
-            long == "long"
-                || long == "tree"
-                || long == "format"
-                || long.starts_with("format=")
-        } else if arg.starts_with('-') && arg.len() > 1 {
-            arg[1..].chars().any(|c| matches!(c, 'l' | 'T' | 'O'))
-        } else {
-            false
-        }
-    })
-}
-
-fn print_json(entries: &[EntryData], opts: &FormatOptions) -> Result<()> {
-    let output: Vec<_> = entries.iter().map(|e| e.to_json(opts)).collect();
-    println!("{}", serde_json::to_string_pretty(&output)?);
-    Ok(())
-}
-
-fn print_csv(entries: &[EntryData], opts: &FormatOptions) -> Result<()> {
-    // CSV header
-    println!("name,path,size,modified,permissions,uid,gid,file_type,git_status");
-    for entry in entries {
-        println!("{}", entry.to_csv(opts));
+/// Restore the default SIGPIPE behavior so `lsr | head` exits quietly.
+#[cfg(unix)]
+fn reset_sigpipe() {
+    // Safety: resetting a signal disposition is safe to do before any threads
+    // are created, which is the case here.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
-    Ok(())
 }
+
+#[cfg(not(unix))]
+fn reset_sigpipe() {}
 
 fn generate_default_config() {
     let config = r###"# lsr configuration file
@@ -198,8 +194,8 @@ fn generate_default_config() {
 
 [format]
 # default = "default"   # default | long | tree | json | csv
-# time_style = "locale" # iso | locale | relative | full
-# depth = 1             # tree depth; omit for unlimited
+# time_style = "locale" # iso | locale | relative | full, or a chrono format
+# depth = 3             # tree depth; omit for unlimited
 # tree_max_entries = 100  # auto-fallback to regular listing if exceeded
 
 [colors]

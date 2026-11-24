@@ -85,8 +85,8 @@ pub struct Args {
     pub long: bool,
 
     /// Output format
-    #[arg(short = 'O', long, value_enum, default_value_t = OutputFormat::Default)]
-    pub format: OutputFormat,
+    #[arg(short = 'O', long, value_enum)]
+    pub format: Option<OutputFormat>,
 
     /// Show as tree
     #[arg(short = 'T', long, conflicts_with = "format")]
@@ -163,13 +163,13 @@ pub struct Args {
     #[arg(long, default_value_t = false)]
     pub git: bool,
 
-    /// Show file icons
-    #[arg(long, value_enum, default_value_t = IconWhen::Auto)]
-    pub icons: IconWhen,
+    /// Show file icons (default: auto)
+    #[arg(long, value_enum)]
+    pub icons: Option<IconWhen>,
 
-    /// Color output
-    #[arg(long, value_enum, default_value_t = ColorWhen::Auto)]
-    pub color: ColorWhen,
+    /// Color output (default: auto)
+    #[arg(long, value_enum)]
+    pub color: Option<ColorWhen>,
 
     /// Show full time (nanosecond precision)
     #[arg(long = "full-time")]
@@ -203,11 +203,6 @@ pub struct Args {
     /// Group files by: ext, date, size
     #[arg(long = "group-by", value_name = "MODE", value_parser = ["ext", "date", "size"])]
     pub group_by: Option<String>,
-
-    // === TUI ===
-    /// Launch interactive TUI file browser
-    #[arg(long)]
-    pub tui: bool,
 
     // === Archive ===
     /// List archive contents (zip, tar, tar.gz, tar.zst)
@@ -245,32 +240,40 @@ pub struct Args {
     #[arg(short = 'v', long)]
     pub verbose: bool,
 
-    /// Use a built-in theme (default, minimal, dev)
+    /// Use a built-in color theme
     #[arg(long, value_name = "THEME")]
     pub theme: Option<String>,
 
     /// Path to config file
-    #[arg(long = "config-file", value_name = "PATH")]
+    #[arg(long = "config-file", visible_alias = "config", value_name = "PATH")]
     pub config_file: Option<PathBuf>,
 
     /// Generate shell completions
-    #[arg(long = "generate-completion", value_enum, hide = true)]
+    #[arg(long = "generate-completion", visible_alias = "completion", value_enum)]
     pub completion: Option<Shell>,
 
-    /// Generate default config file
-    #[arg(long = "generate-config", hide = true)]
+    /// Generate a default config file
+    #[arg(long = "generate-config")]
     pub generate_config: bool,
 }
 
 impl Args {
-    /// Get effective output format
+    /// Get the output format after applying the format flags.
     pub fn effective_format(&self) -> OutputFormat {
         if self.tree {
             OutputFormat::Tree
         } else if self.long {
             OutputFormat::Long
         } else {
-            self.format
+            self.format.unwrap_or(OutputFormat::Default)
         }
+    }
+
+    /// True when the user asked for a format on the command line.
+    ///
+    /// This is used to decide whether a config file's `format.default`
+    /// should apply.
+    pub fn explicit_format_requested(&self) -> bool {
+        self.long || self.tree || self.format.is_some()
     }
 }

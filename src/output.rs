@@ -1,12 +1,15 @@
 //! Output formatting and printing
 
-use anyhow::Result;
 use crate::cli::Args;
+use crate::format::{
+    FormatOptions, colorize_name, format_entry_long, format_git_status, format_size,
+};
 use crate::fs::{EntryData, FileType};
-use crate::format::{colorize_name, format_entry_long, FormatOptions};
 use crate::icons::get_icon;
+use anyhow::Result;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use unicode_width::UnicodeWidthStr;
 
 /// Print entries in default/long format
 pub fn print_entries(
@@ -55,32 +58,46 @@ pub fn print_entries(
 
 /// Render one entry and return its styled text plus visible width.
 fn render_entry(entry: &EntryData, opts: &FormatOptions) -> (String, usize) {
-    use unicode_width::UnicodeWidthStr;
-
     let icon = if opts.show_icons {
         get_icon(&entry.path, entry.file_type, true)
     } else {
         ""
     };
 
-    let visible = if opts.show_icons && !icon.is_empty() {
+    let mut visible = if opts.show_icons && !icon.is_empty() {
         format!("{} {}", icon, entry.name)
     } else {
         entry.name.clone()
     };
 
+    // `--du` also works without `-l`; append the size to each name so the
+    // flag has a visible effect in the default columnar view.
+    if opts.show_total_size {
+        let size = if entry.file_type == FileType::Directory {
+            entry.total_size
+        } else {
+            entry.size
+        };
+        visible.push(' ');
+        visible.push_str(&format_size(size, opts.human_readable));
+    }
+
     let mut width = UnicodeWidthStr::width(visible.as_str());
 
     let mut rendered = if opts.use_color {
-        colorize_name(
-            &visible,
-            entry.file_type,
-            entry.permissions,
-            &opts.colors,
-        )
+        colorize_name(&visible, entry.file_type, entry.permissions, &opts.colors)
     } else {
         visible
     };
+
+    if let Some(status) = entry.git_status {
+        if let Some(status_str) = format_git_status(status, opts) {
+            let icon = crate::icons::git_status_icon(&status);
+            width += 1 + UnicodeWidthStr::width(icon);
+            rendered.push(' ');
+            rendered.push_str(&status_str);
+        }
+    }
 
     if opts.classify {
         let marker = entry.file_type.classify_char(entry.permissions);
@@ -111,14 +128,10 @@ fn print_default(entries: &[EntryData], opts: &FormatOptions, one_line: bool) ->
         return Ok(());
     }
 
-    let max_name_width = rendered
-        .iter()
-        .map(|(_, width)| *width)
-        .max()
-        .unwrap_or(0);
+    let max_name_width = rendered.iter().map(|(_, width)| *width).max().unwrap_or(0);
     let col_width = max_name_width + 2;
     let cols = (opts.term_width / col_width).max(1);
-    let rows = (entries.len() + cols - 1) / cols;
+    let rows = entries.len().div_ceil(cols);
 
     // Print in columns (column-major order)
     for row in 0..rows {
@@ -180,7 +193,8 @@ pub fn print_trees(
         let top_level: Vec<&EntryData> = entries
             .iter()
             .filter(|e| {
-                e.path.strip_prefix(root)
+                e.path
+                    .strip_prefix(root)
                     .map(|p| p.components().count() == 1)
                     .unwrap_or(false)
             })
@@ -225,7 +239,11 @@ struct TreeNode {
 impl TreeNode {
     fn new(path: &Path) -> Self {
         Self {
-            name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
             path: path.to_path_buf(),
             entry: None,
             children: HashMap::new(),
@@ -235,22 +253,36 @@ impl TreeNode {
     fn insert(&mut self, path: &Path, entry: &EntryData) {
         let mut current = self;
         let components: Vec<_> = path.components().collect();
-        
+
         for (i, component) in components.iter().enumerate() {
             let name = component.as_os_str().to_string_lossy().to_string();
-            
+
             if i == components.len() - 1 {
                 // This is the file itself
-                let child = current.children.entry(name.clone()).or_insert_with(|| TreeNode::new(&current.path.join(&name)));
+                let child = current
+                    .children
+                    .entry(name.clone())
+                    .or_insert_with(|| TreeNode::new(&current.path.join(&name)));
                 child.entry = Some(entry.clone());
             } else {
                 // Directory
-                current = current.children.entry(name.clone()).or_insert_with(|| TreeNode::new(&current.path.join(&name)));
+                current = current
+                    .children
+                    .entry(name.clone())
+                    .or_insert_with(|| TreeNode::new(&current.path.join(&name)));
             }
         }
     }
 
-    fn print(&self, opts: &FormatOptions, max_depth: usize, depth: usize, is_last: bool, prefix: String, max_children: Option<usize>) -> Result<()> {
+    fn print(
+        &self,
+        opts: &FormatOptions,
+        max_depth: usize,
+        depth: usize,
+        is_last: bool,
+        prefix: String,
+        max_children: Option<usize>,
+    ) -> Result<()> {
         if depth > max_depth {
             return Ok(());
         }
@@ -276,7 +308,7 @@ impl TreeNode {
             } else {
                 ""
             };
-            
+
             let name = if opts.show_icons && !icon.is_empty() {
                 format!("{} {}", icon, entry.name)
             } else {
@@ -289,7 +321,24 @@ impl TreeNode {
                 name
             };
 
-            println!("{}{}", line_prefix, colored);
+            let mut suffix = String::new();
+            if opts.show_total_size {
+                let size = if entry.file_type == FileType::Directory {
+                    entry.total_size
+                } else {
+                    entry.size
+                };
+                suffix.push(' ');
+                suffix.push_str(&format_size(size, opts.human_readable));
+            }
+            if let Some(status) = entry.git_status {
+                if let Some(status_str) = format_git_status(status, opts) {
+                    suffix.push(' ');
+                    suffix.push_str(&status_str);
+                }
+            }
+
+            println!("{}{}{}", line_prefix, colored, suffix);
         } else if depth > 0 {
             // Directory node
             let name = if opts.show_icons {
@@ -308,23 +357,26 @@ impl TreeNode {
         // Print children
         let mut children: Vec<_> = self.children.values().collect();
         children.sort_by(|a, b| a.name.cmp(&b.name));
-        
+
         let child_count = children.len();
         let max_show = max_children.unwrap_or(child_count);
-        
+
         for (i, child) in children.into_iter().enumerate() {
             if i >= max_show {
                 // Show "+N more" message
                 let remaining = child_count - max_show;
                 let msg = format!("{}  ... +{} more", prefix, remaining);
                 if opts.use_color {
-                    println!("{}", colorize_name(&msg, FileType::Directory, 0, &opts.colors));
+                    println!(
+                        "{}",
+                        colorize_name(&msg, FileType::Directory, 0, &opts.colors)
+                    );
                 } else {
                     println!("{}", msg);
                 }
                 break;
             }
-            
+
             let child_is_last = i == child_count - 1 || i == max_show - 1;
             let child_prefix = if depth == 0 {
                 String::new()
@@ -333,8 +385,15 @@ impl TreeNode {
             } else {
                 prefix.clone() + "│   "
             };
-            
-            child.print(opts, max_depth, depth + 1, child_is_last, child_prefix, max_children)?;
+
+            child.print(
+                opts,
+                max_depth,
+                depth + 1,
+                child_is_last,
+                child_prefix,
+                max_children,
+            )?;
         }
 
         Ok(())

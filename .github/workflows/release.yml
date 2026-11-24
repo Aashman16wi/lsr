@@ -9,19 +9,24 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Release
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target:
-          - x86_64-unknown-linux-gnu
-          - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-gnu
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
-          - x86_64-pc-windows-gnu
+  build:
+    name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,74 +39,50 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cross-compilation deps (Linux)
-        if: matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          apt-get update && apt-get install -y musl-tools gcc-aarch64-linux-gnu
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Install aarch64 cross linker
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build release
-        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: Prepare artifacts
+      - name: Package
+        shell: bash
         run: |
-          mkdir -p release
-          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
-            cp target/${{ matrix.target }}/release/lsr.exe release/lsr-${{ matrix.target }}.exe
-          else
-            cp target/${{ matrix.target }}/release/lsr release/lsr-${{ matrix.target }}
-            tar czf release/lsr-${{ matrix.target }}.tar.gz -C target/${{ matrix.target }}/release lsr
-          fi
+          mkdir -p dist
+          tar czf "dist/lsr-${{ matrix.target }}.tar.gz" \
+            -C "target/${{ matrix.target }}/release" lsr
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: lsr-${{ matrix.target }}
-          path: release/
+          path: dist/*
+          if-no-files-found: error
           retention-days: 30
 
-  publish:
+  release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: release
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
     steps:
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          path: release
+          path: dist
           pattern: lsr-*
           merge-multiple: true
 
-      - name: Generate changelog
-        run: |
-          git log --pretty=format:'- %s' $(git describe --tags --abbrev=0 HEAD^)..HEAD > release/CHANGELOG.md || echo "- Release ${{ github.ref_name }}" > release/CHANGELOG.md
-
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release/lsr-*/*
-            release/CHANGELOG.md
+          files: dist/*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  publish-crates:
-    name: Publish to crates.io
-    runs-on: ubuntu-latest
-    needs: release
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

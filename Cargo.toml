@@ -2,6 +2,7 @@
 name = "lsr"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 description = "A fast, modern, feature-rich ls replacement written in Rust"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Aashman16wi/lsr"
@@ -13,6 +14,8 @@ clap_complete = "4.5"
 
 # File system operations
 ignore = "0.4"
+globset = "0.4"
+libc = "0.2"
 
 # Parallel I/O
 rayon = "1.10"
@@ -20,7 +23,6 @@ rayon = "1.10"
 # Colors and styling
 owo-colors = "4.0"
 terminal_size = "0.2"
-atty = "0.2"
 
 # User/group lookup
 users = "0.11"

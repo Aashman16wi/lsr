@@ -6,6 +6,7 @@ use crate::fs::{EntryData, FileType, GitStatus};
 use crate::icons::{get_icon, git_status_color, git_status_icon};
 use chrono::{DateTime, Local};
 use owo_colors::{OwoColorize, colors};
+use std::io::IsTerminal;
 
 /// Format options derived from CLI args and config
 #[derive(Debug, Clone)]
@@ -18,7 +19,7 @@ pub struct FormatOptions {
     pub show_owner: bool,
     pub show_group: bool,
     pub show_git: bool,
-    pub show_total_size: bool,  // --du flag
+    pub show_total_size: bool, // --du flag
     pub full_time: bool,
     pub time_field: TimeField,
     pub time_style: Option<String>,
@@ -28,6 +29,17 @@ pub struct FormatOptions {
     pub colors: ColorsConfig,
 }
 
+fn auto_color() -> bool {
+    std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none()
+}
+
+fn auto_icons() -> bool {
+    auto_color()
+        && std::env::var("TERM")
+            .map(|term| term != "dumb")
+            .unwrap_or(false)
+}
+
 impl FormatOptions {
     pub fn from_args_and_config(args: &Args, config: &LsrConfig) -> Self {
         let term_width = terminal_size::terminal_size()
@@ -35,41 +47,46 @@ impl FormatOptions {
             .unwrap_or(80);
 
         // Use effective config for the first path (or default)
-        let effective = config.for_path(&args.paths.first().cloned().unwrap_or_else(|| std::path::PathBuf::from(".")));
+        let effective = config.for_path(
+            &args
+                .paths
+                .first()
+                .cloned()
+                .unwrap_or_else(|| std::path::PathBuf::from(".")),
+        );
 
-        // Determine if we should show icons (CLI > config > auto)
+        // Determine if we should show icons (explicit CLI > config > auto)
         let show_icons = match args.icons {
-            IconWhen::Always => true,
-            IconWhen::Never => false,
-            IconWhen::Auto => {
-                // Check config
-                if effective.display.icons != "auto" {
-                    effective.display.icons == "always"
-                } else {
-                    // Auto-detect
-                    std::env::var("TERM").map(|t| t != "dumb").unwrap_or(false)
-                        && !std::env::var("NO_COLOR").is_ok()
-                }
-            }
+            Some(IconWhen::Always) => true,
+            Some(IconWhen::Never) => false,
+            Some(IconWhen::Auto) => auto_icons(),
+            None => match effective.display.icons.as_str() {
+                "always" => true,
+                "never" => false,
+                _ => auto_icons(),
+            },
         };
 
-        // Determine color (CLI > config > auto)
+        // Determine color (explicit CLI > config > auto)
         let use_color = match args.color {
-            ColorWhen::Always => true,
-            ColorWhen::Never => false,
-            ColorWhen::Auto => {
-                if effective.display.color != "auto" {
-                    effective.display.color == "always"
-                } else {
-                    atty::is(atty::Stream::Stdout) && std::env::var("NO_COLOR").is_err()
-                }
-            }
+            Some(ColorWhen::Always) => true,
+            Some(ColorWhen::Never) => false,
+            Some(ColorWhen::Auto) => auto_color(),
+            None => match effective.display.color.as_str() {
+                "always" => true,
+                "never" => false,
+                _ => auto_color(),
+            },
         };
 
         Self {
             show_icons,
             use_color,
-            human_readable: if args.bytes { false } else { args.human_readable || effective.display.human_readable },
+            human_readable: if args.bytes {
+                false
+            } else {
+                args.human_readable || effective.display.human_readable
+            },
             show_inode: args.inode,
             show_links: args.links,
             show_owner: args.owner,
@@ -280,11 +297,16 @@ pub fn colorize_permissions(perms: &str, file_type: FileType) -> String {
     match file_type {
         FileType::Directory => perms.fg::<colors::BrightBlue>().to_string(),
         FileType::Symlink => perms.fg::<colors::BrightMagenta>().to_string(),
-        FileType::BlockDevice | FileType::CharDevice => perms.fg::<colors::BrightYellow>().to_string(),
+        FileType::BlockDevice | FileType::CharDevice => {
+            perms.fg::<colors::BrightYellow>().to_string()
+        }
         FileType::Fifo | FileType::Socket => perms.fg::<colors::BrightGreen>().to_string(),
         _ => {
             // Check if executable
-            if perms.chars().nth(3) == Some('x') || perms.chars().nth(6) == Some('x') || perms.chars().nth(9) == Some('x') {
+            if perms.chars().nth(3) == Some('x')
+                || perms.chars().nth(6) == Some('x')
+                || perms.chars().nth(9) == Some('x')
+            {
                 perms.fg::<colors::BrightGreen>().to_string() // Green for executable
             } else {
                 perms.fg::<colors::White>().to_string() // White for regular
@@ -294,18 +316,11 @@ pub fn colorize_permissions(perms: &str, file_type: FileType) -> String {
 }
 
 /// Colorize filename by type, honoring user color overrides.
-pub fn colorize_name(
-    name: &str,
-    file_type: FileType,
-    perms: u32,
-    colors: &ColorsConfig,
-) -> String {
+pub fn colorize_name(name: &str, file_type: FileType, perms: u32, colors: &ColorsConfig) -> String {
     match file_type {
         FileType::Directory => paint(name, colors.dir.as_deref(), (0x5f, 0xaf, 0xff), true),
         FileType::Symlink => paint(name, colors.symlink.as_deref(), (0xaf, 0x5f, 0xff), false),
-        FileType::BlockDevice | FileType::CharDevice => {
-            paint(name, None, (0xff, 0xff, 0x5f), true)
-        }
+        FileType::BlockDevice | FileType::CharDevice => paint(name, None, (0xff, 0xff, 0x5f), true),
         FileType::Fifo | FileType::Socket => paint(name, None, (0x5f, 0xd7, 0x5f), false),
         _ => {
             if perms & 0o111 != 0 {
@@ -359,6 +374,20 @@ fn colorize_git_icon(icon: &str, status: GitStatus, colors: &ColorsConfig) -> St
         .unwrap_or_else(|| git_status_color(&status));
 
     format!("\x1b[38;2;{};{};{}m{}\x1b[0m", r, g, b, icon)
+}
+
+/// Render a git status icon when git output is enabled.
+pub fn format_git_status(status: GitStatus, opts: &FormatOptions) -> Option<String> {
+    if !opts.show_git || status == GitStatus::Unmodified {
+        return None;
+    }
+
+    let icon = git_status_icon(&status);
+    Some(if opts.use_color {
+        colorize_git_icon(icon, status, &opts.colors)
+    } else {
+        icon.to_string()
+    })
 }
 
 /// Format a single entry for long output
@@ -420,7 +449,7 @@ pub fn format_entry_long(entry: &EntryData, opts: &FormatOptions) -> String {
     } else {
         ""
     };
-    
+
     let name = &entry.name;
     let name_display = if opts.show_icons && !icon.is_empty() {
         format!("{} {}", icon, name)
@@ -430,7 +459,12 @@ pub fn format_entry_long(entry: &EntryData, opts: &FormatOptions) -> String {
 
     // Colorize name by type
     let name_colored = if opts.use_color {
-        colorize_name(&name_display, entry.file_type, entry.permissions, &opts.colors)
+        colorize_name(
+            &name_display,
+            entry.file_type,
+            entry.permissions,
+            &opts.colors,
+        )
     } else {
         name_display
     };
@@ -445,15 +479,9 @@ pub fn format_entry_long(entry: &EntryData, opts: &FormatOptions) -> String {
     }
 
     // Git status
-    if opts.show_git {
-        if let Some(status) = entry.git_status {
-            let icon = git_status_icon(&status);
-            let status_str = if opts.use_color {
-                colorize_git_icon(icon, status, &opts.colors)
-            } else {
-                format!(" {}", icon)
-            };
-            parts.push(status_str);
+    if let Some(status) = entry.git_status {
+        if let Some(status_str) = format_git_status(status, opts) {
+            parts.push(format!(" {}", status_str));
         }
     }
 

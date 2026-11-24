@@ -2,15 +2,14 @@
 
 use anyhow::{Context, Result};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::PathBuf;
-use std::time::Duration;
+use std::path::Path;
 use std::sync::mpsc::channel;
+use std::time::Duration;
 
 use crate::cli::Args;
 use crate::config::LsrConfig;
-use crate::fs::collect_entries;
 use crate::format::FormatOptions;
-use crate::output::print_entries;
+use crate::fs::collect_entries;
 
 /// Run watch mode
 pub fn run_watch(args: Args) -> Result<()> {
@@ -30,7 +29,8 @@ pub fn run_watch(args: Args) -> Result<()> {
     let mut watcher = RecommendedWatcher::new(tx, Config::default().with_poll_interval(interval))
         .context("Failed to create file watcher")?;
 
-    watcher.watch(&path, RecursiveMode::Recursive)
+    watcher
+        .watch(&path, RecursiveMode::Recursive)
         .context("Failed to watch path")?;
 
     // Load config
@@ -45,7 +45,11 @@ pub fn run_watch(args: Args) -> Result<()> {
     // Initial render
     render_once(&args, &config, &path)?;
 
-    println!("\nWatching {} (interval: {}s) — Press Ctrl+C to stop", path.display(), interval.as_secs());
+    println!(
+        "\nWatching {} (interval: {}s) — Press Ctrl+C to stop",
+        path.display(),
+        interval.as_secs()
+    );
 
     // Event loop
     loop {
@@ -55,7 +59,11 @@ pub fn run_watch(args: Args) -> Result<()> {
                     // Clear screen and re-render
                     print!("\x1b[2J\x1b[H");
                     render_once(&args, &config, &path)?;
-                    println!("\nWatching {} (interval: {}s) — Press Ctrl+C to stop", path.display(), interval.as_secs());
+                    println!(
+                        "\nWatching {} (interval: {}s) — Press Ctrl+C to stop",
+                        path.display(),
+                        interval.as_secs()
+                    );
                 }
             }
             Ok(Err(e)) => {
@@ -65,7 +73,11 @@ pub fn run_watch(args: Args) -> Result<()> {
                 // Timeout - periodic refresh
                 print!("\x1b[2J\x1b[H");
                 render_once(&args, &config, &path)?;
-                println!("\nWatching {} (interval: {}s) — Press Ctrl+C to stop", path.display(), interval.as_secs());
+                println!(
+                    "\nWatching {} (interval: {}s) — Press Ctrl+C to stop",
+                    path.display(),
+                    interval.as_secs()
+                );
             }
         }
     }
@@ -78,12 +90,12 @@ fn should_refresh(event: &Event) -> bool {
     )
 }
 
-fn render_once(args: &Args, config: &LsrConfig, path: &PathBuf) -> Result<()> {
-    let primary_path = path.clone();
-    let effective = config.for_path(&primary_path);
+fn render_once(args: &Args, config: &LsrConfig, path: &Path) -> Result<()> {
+    let path_buf = path.to_path_buf();
+    let effective = config.for_path(path);
 
-    let effective_format = if args.format != crate::cli::OutputFormat::Default {
-        args.format
+    let effective_format = if args.explicit_format_requested() {
+        args.effective_format()
     } else {
         match effective.format.default.as_str() {
             "long" => crate::cli::OutputFormat::Long,
@@ -101,11 +113,15 @@ fn render_once(args: &Args, config: &LsrConfig, path: &PathBuf) -> Result<()> {
     };
     let tree_max_entries = effective.format.tree_max_entries;
 
-    let git_repos = crate::git::GitRepo::discover_all(&[path.clone()])?;
+    let git_repos = crate::git::GitRepo::discover_all(std::slice::from_ref(&path_buf))?;
 
     let walk_depth = match effective_format {
         crate::cli::OutputFormat::Tree => {
-            if tree_depth == usize::MAX { None } else { Some(tree_depth) }
+            if tree_depth == usize::MAX {
+                None
+            } else {
+                Some(tree_depth)
+            }
         }
         _ if args.recursive => None,
         _ => Some(1),
@@ -115,7 +131,7 @@ fn render_once(args: &Args, config: &LsrConfig, path: &PathBuf) -> Result<()> {
     let group_dirs_first = args.group_dirs_first || effective.display.group_dirs_first;
 
     let entries = collect_entries(
-        &[path.clone()],
+        std::slice::from_ref(&path_buf),
         args,
         &git_repos,
         walk_depth,
@@ -126,15 +142,22 @@ fn render_once(args: &Args, config: &LsrConfig, path: &PathBuf) -> Result<()> {
     let format_opts = FormatOptions::from_args_and_config(args, config);
 
     match effective_format {
-        crate::cli::OutputFormat::Default => crate::output::print_entries(&entries, &format_opts, args, false)?,
-        crate::cli::OutputFormat::Long => crate::output::print_entries(&entries, &format_opts, args, true)?,
-        crate::cli::OutputFormat::Tree => crate::output::print_trees(&entries, &format_opts, tree_depth, &[path.clone()], tree_max_entries)?,
+        crate::cli::OutputFormat::Default => {
+            crate::output::print_entries(&entries, &format_opts, args, false)?
+        }
+        crate::cli::OutputFormat::Long => {
+            crate::output::print_entries(&entries, &format_opts, args, true)?
+        }
+        crate::cli::OutputFormat::Tree => crate::output::print_trees(
+            &entries,
+            &format_opts,
+            tree_depth,
+            std::slice::from_ref(&path_buf),
+            tree_max_entries,
+        )?,
         crate::cli::OutputFormat::Json => crate::output::print_json(&entries, &format_opts)?,
         crate::cli::OutputFormat::Csv => crate::output::print_csv(&entries, &format_opts)?,
     }
 
     Ok(())
 }
-
-// Add this method to Args in cli.rs
-// fn explicit_format_requested(&self) -> bool { ... }

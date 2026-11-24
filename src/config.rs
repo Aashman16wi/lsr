@@ -104,7 +104,7 @@ impl Default for FormatConfig {
         Self {
             default: "default".to_string(),
             time_style: "locale".to_string(),
-            depth: 1,
+            depth: usize::MAX,
             tree_max_entries: 100,
         }
     }
@@ -260,9 +260,10 @@ impl LsrConfig {
             .set_default("git.show_untracked", true)?;
 
         // Load user config file (or custom path)
-        let config_path = cli_config_file.map(|p| p.to_path_buf())
+        let config_path = cli_config_file
+            .map(|p| p.to_path_buf())
             .or_else(Self::user_config_path);
-        
+
         if let Some(path) = config_path {
             if path.exists() {
                 builder = builder.add_source(File::from(path).required(false));
@@ -277,9 +278,11 @@ impl LsrConfig {
         // Environment variables (LSR_DISPLAY__ICONS=always, etc.)
         builder = builder.add_source(
             Environment::with_prefix("LSR")
+                // `LSR_DISPLAY__ICONS`: one `_` after the prefix, `__` between
+                // nested sections.
+                .prefix_separator("_")
                 .separator("__")
-                .try_parsing(true)
-                .list_separator(","),
+                .try_parsing(true),
         );
 
         let mut config: LsrConfig = builder.build()?.try_deserialize()?;
@@ -372,9 +375,7 @@ impl LsrConfig {
         let absolute = if path.is_absolute() {
             path.to_path_buf()
         } else {
-            std::env::current_dir()
-                .unwrap_or_default()
-                .join(path)
+            std::env::current_dir().unwrap_or_default().join(path)
         };
 
         let mut normalized = PathBuf::new();
@@ -426,223 +427,277 @@ impl LsrConfig {
         let mut themes = HashMap::new();
 
         // Default theme - developer-friendly
-        themes.insert("default".to_string(), Theme {
-            name: "default".to_string(),
-            display: Some(DisplayConfig {
-                icons: "always".to_string(),
-                color: "always".to_string(),
-                human_readable: true,
-                show_git: true,
-                group_dirs_first: true,
-            }),
-            format: Some(FormatConfig {
-                default: "long".to_string(),
-                time_style: "iso".to_string(),
-                depth: 3,
-                tree_max_entries: 200,
-            }),
-            icons: Some(IconsConfig { theme: "nerd".to_string() }),
-            colors: Some(ColorsConfig {
-                dir: Some("#7aa2f7".to_string()),
-                exec: Some("#9ece6a".to_string()),
-                symlink: Some("#bb9af7".to_string()),
-                file: Some("#a9b1d6".to_string()),
-                git_modified: Some("#e0af68".to_string()),
-                git_added: Some("#9ece6a".to_string()),
-                git_deleted: Some("#f7768e".to_string()),
-                git_untracked: Some("#ff9e64".to_string()),
-                git_ignored: Some("#565f89".to_string()),
-                git_renamed: Some("#7aa2f7".to_string()),
-                git_conflicted: Some("#f7768e".to_string()),
-            }),
-            git: Some(GitConfig { show_ignored: true, show_untracked: true }),
-        });
+        themes.insert(
+            "default".to_string(),
+            Theme {
+                name: "default".to_string(),
+                display: Some(DisplayConfig {
+                    icons: "always".to_string(),
+                    color: "always".to_string(),
+                    human_readable: true,
+                    show_git: true,
+                    group_dirs_first: true,
+                }),
+                format: Some(FormatConfig {
+                    default: "long".to_string(),
+                    time_style: "iso".to_string(),
+                    depth: 3,
+                    tree_max_entries: 200,
+                }),
+                icons: Some(IconsConfig {
+                    theme: "nerd".to_string(),
+                }),
+                colors: Some(ColorsConfig {
+                    dir: Some("#7aa2f7".to_string()),
+                    exec: Some("#9ece6a".to_string()),
+                    symlink: Some("#bb9af7".to_string()),
+                    file: Some("#a9b1d6".to_string()),
+                    git_modified: Some("#e0af68".to_string()),
+                    git_added: Some("#9ece6a".to_string()),
+                    git_deleted: Some("#f7768e".to_string()),
+                    git_untracked: Some("#ff9e64".to_string()),
+                    git_ignored: Some("#565f89".to_string()),
+                    git_renamed: Some("#7aa2f7".to_string()),
+                    git_conflicted: Some("#f7768e".to_string()),
+                }),
+                git: Some(GitConfig {
+                    show_ignored: true,
+                    show_untracked: true,
+                }),
+            },
+        );
 
         // Minimal theme
-        themes.insert("minimal".to_string(), Theme {
-            name: "minimal".to_string(),
-            display: Some(DisplayConfig {
-                icons: "never".to_string(),
-                color: "never".to_string(),
-                human_readable: false,
-                show_git: false,
-                group_dirs_first: false,
-            }),
-            format: Some(FormatConfig {
-                default: "default".to_string(),
-                time_style: "locale".to_string(),
-                depth: 1,
-                tree_max_entries: 100,
-            }),
-            icons: Some(IconsConfig::default()),
-            colors: None,
-            git: Some(GitConfig { show_ignored: false, show_untracked: false }),
-        });
+        themes.insert(
+            "minimal".to_string(),
+            Theme {
+                name: "minimal".to_string(),
+                display: Some(DisplayConfig {
+                    icons: "never".to_string(),
+                    color: "never".to_string(),
+                    human_readable: false,
+                    show_git: false,
+                    group_dirs_first: false,
+                }),
+                format: Some(FormatConfig {
+                    default: "default".to_string(),
+                    time_style: "locale".to_string(),
+                    depth: 1,
+                    tree_max_entries: 100,
+                }),
+                icons: Some(IconsConfig::default()),
+                colors: None,
+                git: Some(GitConfig {
+                    show_ignored: false,
+                    show_untracked: false,
+                }),
+            },
+        );
 
         // Developer theme (tokyo night inspired)
-        themes.insert("dev".to_string(), Theme {
-            name: "dev".to_string(),
-            display: Some(DisplayConfig {
-                icons: "always".to_string(),
-                color: "always".to_string(),
-                human_readable: true,
-                show_git: true,
-                group_dirs_first: true,
-            }),
-            format: Some(FormatConfig {
-                default: "long".to_string(),
-                time_style: "iso".to_string(),
-                depth: 3,
-                tree_max_entries: 500,
-            }),
-            icons: Some(IconsConfig { theme: "nerd".to_string() }),
-            colors: Some(ColorsConfig {
-                dir: Some("#7aa2f7".to_string()),
-                exec: Some("#9ece6a".to_string()),
-                symlink: Some("#bb9af7".to_string()),
-                file: Some("#a9b1d6".to_string()),
-                git_modified: Some("#e0af68".to_string()),
-                git_added: Some("#9ece6a".to_string()),
-                git_deleted: Some("#f7768e".to_string()),
-                git_untracked: Some("#ff9e64".to_string()),
-                git_ignored: Some("#565f89".to_string()),
-                git_renamed: Some("#7aa2f7".to_string()),
-                git_conflicted: Some("#f7768e".to_string()),
-            }),
-            git: Some(GitConfig { show_ignored: true, show_untracked: true }),
-        });
+        themes.insert(
+            "dev".to_string(),
+            Theme {
+                name: "dev".to_string(),
+                display: Some(DisplayConfig {
+                    icons: "always".to_string(),
+                    color: "always".to_string(),
+                    human_readable: true,
+                    show_git: true,
+                    group_dirs_first: true,
+                }),
+                format: Some(FormatConfig {
+                    default: "long".to_string(),
+                    time_style: "iso".to_string(),
+                    depth: 3,
+                    tree_max_entries: 500,
+                }),
+                icons: Some(IconsConfig {
+                    theme: "nerd".to_string(),
+                }),
+                colors: Some(ColorsConfig {
+                    dir: Some("#7aa2f7".to_string()),
+                    exec: Some("#9ece6a".to_string()),
+                    symlink: Some("#bb9af7".to_string()),
+                    file: Some("#a9b1d6".to_string()),
+                    git_modified: Some("#e0af68".to_string()),
+                    git_added: Some("#9ece6a".to_string()),
+                    git_deleted: Some("#f7768e".to_string()),
+                    git_untracked: Some("#ff9e64".to_string()),
+                    git_ignored: Some("#565f89".to_string()),
+                    git_renamed: Some("#7aa2f7".to_string()),
+                    git_conflicted: Some("#f7768e".to_string()),
+                }),
+                git: Some(GitConfig {
+                    show_ignored: true,
+                    show_untracked: true,
+                }),
+            },
+        );
 
         // Tokyo Night
-        themes.insert("tokyo-night".to_string(), Theme {
-            name: "tokyo-night".to_string(),
-            display: Some(DisplayConfig {
-                icons: "always".to_string(),
-                color: "always".to_string(),
-                human_readable: true,
-                show_git: true,
-                group_dirs_first: true,
-            }),
-            format: Some(FormatConfig {
-                default: "tree".to_string(),
-                time_style: "iso".to_string(),
-                depth: 3,
-                tree_max_entries: 300,
-            }),
-            icons: Some(IconsConfig { theme: "nerd".to_string() }),
-            colors: Some(ColorsConfig {
-                dir: Some("#7aa2f7".to_string()),
-                exec: Some("#9ece6a".to_string()),
-                symlink: Some("#bb9af7".to_string()),
-                file: Some("#a9b1d6".to_string()),
-                git_modified: Some("#e0af68".to_string()),
-                git_added: Some("#9ece6a".to_string()),
-                git_deleted: Some("#f7768e".to_string()),
-                git_untracked: Some("#ff9e64".to_string()),
-                git_ignored: Some("#565f89".to_string()),
-                git_renamed: Some("#7aa2f7".to_string()),
-                git_conflicted: Some("#f7768e".to_string()),
-            }),
-            git: Some(GitConfig { show_ignored: true, show_untracked: true }),
-        });
+        themes.insert(
+            "tokyo-night".to_string(),
+            Theme {
+                name: "tokyo-night".to_string(),
+                display: Some(DisplayConfig {
+                    icons: "always".to_string(),
+                    color: "always".to_string(),
+                    human_readable: true,
+                    show_git: true,
+                    group_dirs_first: true,
+                }),
+                format: Some(FormatConfig {
+                    default: "tree".to_string(),
+                    time_style: "iso".to_string(),
+                    depth: 3,
+                    tree_max_entries: 300,
+                }),
+                icons: Some(IconsConfig {
+                    theme: "nerd".to_string(),
+                }),
+                colors: Some(ColorsConfig {
+                    dir: Some("#7aa2f7".to_string()),
+                    exec: Some("#9ece6a".to_string()),
+                    symlink: Some("#bb9af7".to_string()),
+                    file: Some("#a9b1d6".to_string()),
+                    git_modified: Some("#e0af68".to_string()),
+                    git_added: Some("#9ece6a".to_string()),
+                    git_deleted: Some("#f7768e".to_string()),
+                    git_untracked: Some("#ff9e64".to_string()),
+                    git_ignored: Some("#565f89".to_string()),
+                    git_renamed: Some("#7aa2f7".to_string()),
+                    git_conflicted: Some("#f7768e".to_string()),
+                }),
+                git: Some(GitConfig {
+                    show_ignored: true,
+                    show_untracked: true,
+                }),
+            },
+        );
 
         // Catppuccin Mocha
-        themes.insert("catppuccin-mocha".to_string(), Theme {
-            name: "catppuccin-mocha".to_string(),
-            display: Some(DisplayConfig {
-                icons: "always".to_string(),
-                color: "always".to_string(),
-                human_readable: true,
-                show_git: true,
-                group_dirs_first: true,
-            }),
-            format: Some(FormatConfig {
-                default: "tree".to_string(),
-                time_style: "iso".to_string(),
-                depth: 3,
-                tree_max_entries: 300,
-            }),
-            icons: Some(IconsConfig { theme: "nerd".to_string() }),
-            colors: Some(ColorsConfig {
-                dir: Some("#89b4fa".to_string()),
-                exec: Some("#a6e3a1".to_string()),
-                symlink: Some("#f5c2e7".to_string()),
-                file: Some("#cdd6f4".to_string()),
-                git_modified: Some("#f9e2af".to_string()),
-                git_added: Some("#a6e3a1".to_string()),
-                git_deleted: Some("#f38ba8".to_string()),
-                git_untracked: Some("#fab387".to_string()),
-                git_ignored: Some("#6c7086".to_string()),
-                git_renamed: Some("#89b4fa".to_string()),
-                git_conflicted: Some("#f38ba8".to_string()),
-            }),
-            git: Some(GitConfig { show_ignored: true, show_untracked: true }),
-        });
+        themes.insert(
+            "catppuccin-mocha".to_string(),
+            Theme {
+                name: "catppuccin-mocha".to_string(),
+                display: Some(DisplayConfig {
+                    icons: "always".to_string(),
+                    color: "always".to_string(),
+                    human_readable: true,
+                    show_git: true,
+                    group_dirs_first: true,
+                }),
+                format: Some(FormatConfig {
+                    default: "tree".to_string(),
+                    time_style: "iso".to_string(),
+                    depth: 3,
+                    tree_max_entries: 300,
+                }),
+                icons: Some(IconsConfig {
+                    theme: "nerd".to_string(),
+                }),
+                colors: Some(ColorsConfig {
+                    dir: Some("#89b4fa".to_string()),
+                    exec: Some("#a6e3a1".to_string()),
+                    symlink: Some("#f5c2e7".to_string()),
+                    file: Some("#cdd6f4".to_string()),
+                    git_modified: Some("#f9e2af".to_string()),
+                    git_added: Some("#a6e3a1".to_string()),
+                    git_deleted: Some("#f38ba8".to_string()),
+                    git_untracked: Some("#fab387".to_string()),
+                    git_ignored: Some("#6c7086".to_string()),
+                    git_renamed: Some("#89b4fa".to_string()),
+                    git_conflicted: Some("#f38ba8".to_string()),
+                }),
+                git: Some(GitConfig {
+                    show_ignored: true,
+                    show_untracked: true,
+                }),
+            },
+        );
 
         // Gruvbox
-        themes.insert("gruvbox".to_string(), Theme {
-            name: "gruvbox".to_string(),
-            display: Some(DisplayConfig {
-                icons: "always".to_string(),
-                color: "always".to_string(),
-                human_readable: true,
-                show_git: true,
-                group_dirs_first: true,
-            }),
-            format: Some(FormatConfig {
-                default: "tree".to_string(),
-                time_style: "iso".to_string(),
-                depth: 3,
-                tree_max_entries: 300,
-            }),
-            icons: Some(IconsConfig { theme: "nerd".to_string() }),
-            colors: Some(ColorsConfig {
-                dir: Some("#83a598".to_string()),
-                exec: Some("#b8bb26".to_string()),
-                symlink: Some("#d3869b".to_string()),
-                file: Some("#ebdbb2".to_string()),
-                git_modified: Some("#fabd2f".to_string()),
-                git_added: Some("#b8bb26".to_string()),
-                git_deleted: Some("#fb4934".to_string()),
-                git_untracked: Some("#fe8019".to_string()),
-                git_ignored: Some("#928374".to_string()),
-                git_renamed: Some("#83a598".to_string()),
-                git_conflicted: Some("#fb4934".to_string()),
-            }),
-            git: Some(GitConfig { show_ignored: true, show_untracked: true }),
-        });
+        themes.insert(
+            "gruvbox".to_string(),
+            Theme {
+                name: "gruvbox".to_string(),
+                display: Some(DisplayConfig {
+                    icons: "always".to_string(),
+                    color: "always".to_string(),
+                    human_readable: true,
+                    show_git: true,
+                    group_dirs_first: true,
+                }),
+                format: Some(FormatConfig {
+                    default: "tree".to_string(),
+                    time_style: "iso".to_string(),
+                    depth: 3,
+                    tree_max_entries: 300,
+                }),
+                icons: Some(IconsConfig {
+                    theme: "nerd".to_string(),
+                }),
+                colors: Some(ColorsConfig {
+                    dir: Some("#83a598".to_string()),
+                    exec: Some("#b8bb26".to_string()),
+                    symlink: Some("#d3869b".to_string()),
+                    file: Some("#ebdbb2".to_string()),
+                    git_modified: Some("#fabd2f".to_string()),
+                    git_added: Some("#b8bb26".to_string()),
+                    git_deleted: Some("#fb4934".to_string()),
+                    git_untracked: Some("#fe8019".to_string()),
+                    git_ignored: Some("#928374".to_string()),
+                    git_renamed: Some("#83a598".to_string()),
+                    git_conflicted: Some("#fb4934".to_string()),
+                }),
+                git: Some(GitConfig {
+                    show_ignored: true,
+                    show_untracked: true,
+                }),
+            },
+        );
 
         // Rose Pine
-        themes.insert("rose-pine".to_string(), Theme {
-            name: "rose-pine".to_string(),
-            display: Some(DisplayConfig {
-                icons: "always".to_string(),
-                color: "always".to_string(),
-                human_readable: true,
-                show_git: true,
-                group_dirs_first: true,
-            }),
-            format: Some(FormatConfig {
-                default: "tree".to_string(),
-                time_style: "iso".to_string(),
-                depth: 3,
-                tree_max_entries: 300,
-            }),
-            icons: Some(IconsConfig { theme: "nerd".to_string() }),
-            colors: Some(ColorsConfig {
-                dir: Some("#9ccfd8".to_string()),
-                exec: Some("#31748f".to_string()),
-                symlink: Some("#c4a7e7".to_string()),
-                file: Some("#e0def4".to_string()),
-                git_modified: Some("#f6c177".to_string()),
-                git_added: Some("#31748f".to_string()),
-                git_deleted: Some("#eb6f92".to_string()),
-                git_untracked: Some("#f6c177".to_string()),
-                git_ignored: Some("#6e6a86".to_string()),
-                git_renamed: Some("#9ccfd8".to_string()),
-                git_conflicted: Some("#eb6f92".to_string()),
-            }),
-            git: Some(GitConfig { show_ignored: true, show_untracked: true }),
-        });
+        themes.insert(
+            "rose-pine".to_string(),
+            Theme {
+                name: "rose-pine".to_string(),
+                display: Some(DisplayConfig {
+                    icons: "always".to_string(),
+                    color: "always".to_string(),
+                    human_readable: true,
+                    show_git: true,
+                    group_dirs_first: true,
+                }),
+                format: Some(FormatConfig {
+                    default: "tree".to_string(),
+                    time_style: "iso".to_string(),
+                    depth: 3,
+                    tree_max_entries: 300,
+                }),
+                icons: Some(IconsConfig {
+                    theme: "nerd".to_string(),
+                }),
+                colors: Some(ColorsConfig {
+                    dir: Some("#9ccfd8".to_string()),
+                    exec: Some("#31748f".to_string()),
+                    symlink: Some("#c4a7e7".to_string()),
+                    file: Some("#e0def4".to_string()),
+                    git_modified: Some("#f6c177".to_string()),
+                    git_added: Some("#31748f".to_string()),
+                    git_deleted: Some("#eb6f92".to_string()),
+                    git_untracked: Some("#f6c177".to_string()),
+                    git_ignored: Some("#6e6a86".to_string()),
+                    git_renamed: Some("#9ccfd8".to_string()),
+                    git_conflicted: Some("#eb6f92".to_string()),
+                }),
+                git: Some(GitConfig {
+                    show_ignored: true,
+                    show_untracked: true,
+                }),
+            },
+        );
 
         themes
     }
@@ -711,11 +766,38 @@ impl EffectiveConfig {
     }
 }
 
-fn default_auto() -> String { "auto".to_string() }
-fn default_true() -> bool { true }
-fn default_false() -> bool { false }
-fn default_format() -> String { "default".to_string() }
-fn default_time_style() -> String { "locale".to_string() }
-fn default_depth() -> usize { 1 }
-fn default_tree_max_entries() -> usize { 100 }
-fn default_source() -> String { "field".to_string() }
+fn default_auto() -> String {
+    "auto".to_string()
+}
+fn default_true() -> bool {
+    true
+}
+fn default_false() -> bool {
+    false
+}
+fn default_format() -> String {
+    "default".to_string()
+}
+fn default_time_style() -> String {
+    "locale".to_string()
+}
+fn default_depth() -> usize {
+    usize::MAX
+}
+fn default_tree_max_entries() -> usize {
+    100
+}
+fn default_source() -> String {
+    "field".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_tree_depth_is_unlimited() {
+        assert_eq!(FormatConfig::default().depth, usize::MAX);
+        assert_eq!(default_depth(), usize::MAX);
+    }
+}
