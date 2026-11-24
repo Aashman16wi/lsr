@@ -12,7 +12,7 @@ run_bench() {
     local cmd="$1"
     local name="$2"
     echo -e "${BLUE}=== $name ===${NC}"
-    hyperfine --warmup 3 --runs 10 "$cmd"
+    hyperfine --warmup 3 --runs 10 -i "$cmd"
     echo
 }
 

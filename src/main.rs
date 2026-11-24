@@ -2,15 +2,15 @@
 //!
 //! Usage: lsr [OPTIONS] [PATHS]...
 
-mod cli;
-mod fs;
-mod output;
-mod git;
-mod icons;
-mod format;
-mod config;
-mod archive;
-mod watch;
+pub mod cli;
+pub mod fs;
+pub mod output;
+pub mod git;
+pub mod icons;
+pub mod format;
+pub mod config;
+pub mod archive;
+pub mod watch;
 
 use anyhow::Result;
 use cli::{Args, OutputFormat};

@@ -209,7 +209,7 @@ pub fn print_trees(
             }
         }
 
-        tree.print(opts, depth, 0, true, String::new())?;
+        tree.print(opts, depth, 0, true, String::new(), Some(50))?;
     }
 
     Ok(())
@@ -250,7 +250,7 @@ impl TreeNode {
         }
     }
 
-    fn print(&self, opts: &FormatOptions, max_depth: usize, depth: usize, is_last: bool, prefix: String) -> Result<()> {
+    fn print(&self, opts: &FormatOptions, max_depth: usize, depth: usize, is_last: bool, prefix: String, max_children: Option<usize>) -> Result<()> {
         if depth > max_depth {
             return Ok(());
         }
@@ -310,8 +310,22 @@ impl TreeNode {
         children.sort_by(|a, b| a.name.cmp(&b.name));
         
         let child_count = children.len();
+        let max_show = max_children.unwrap_or(child_count);
+        
         for (i, child) in children.into_iter().enumerate() {
-            let child_is_last = i == child_count - 1;
+            if i >= max_show {
+                // Show "+N more" message
+                let remaining = child_count - max_show;
+                let msg = format!("{}  ... +{} more", prefix, remaining);
+                if opts.use_color {
+                    println!("{}", colorize_name(&msg, FileType::Directory, 0, &opts.colors));
+                } else {
+                    println!("{}", msg);
+                }
+                break;
+            }
+            
+            let child_is_last = i == child_count - 1 || i == max_show - 1;
             let child_prefix = if depth == 0 {
                 String::new()
             } else if is_last {
@@ -320,9 +334,25 @@ impl TreeNode {
                 prefix.clone() + "│   "
             };
             
-            child.print(opts, max_depth, depth + 1, child_is_last, child_prefix)?;
+            child.print(opts, max_depth, depth + 1, child_is_last, child_prefix, max_children)?;
         }
 
         Ok(())
     }
+}
+
+/// Print entries as JSON
+pub fn print_json(entries: &[crate::fs::EntryData], opts: &FormatOptions) -> Result<()> {
+    let output: Vec<_> = entries.iter().map(|e| e.to_json(opts)).collect();
+    println!("{}", serde_json::to_string_pretty(&output)?);
+    Ok(())
+}
+
+/// Print entries as CSV
+pub fn print_csv(entries: &[crate::fs::EntryData], opts: &FormatOptions) -> Result<()> {
+    println!("name,path,size,modified,permissions,uid,gid,file_type,git_status");
+    for entry in entries {
+        println!("{}", entry.to_csv(opts));
+    }
+    Ok(())
 }

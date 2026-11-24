@@ -356,7 +356,7 @@ fn colorize_git_icon(icon: &str, status: GitStatus, colors: &ColorsConfig) -> St
 
     let (r, g, b) = configured
         .and_then(parse_hex_color)
-        .unwrap_or_else(|| git_status_color(status));
+        .unwrap_or_else(|| git_status_color(&status));
 
     format!("\x1b[38;2;{};{};{}m{}\x1b[0m", r, g, b, icon)
 }
@@ -447,7 +447,7 @@ pub fn format_entry_long(entry: &EntryData, opts: &FormatOptions) -> String {
     // Git status
     if opts.show_git {
         if let Some(status) = entry.git_status {
-            let icon = git_status_icon(status);
+            let icon = git_status_icon(&status);
             let status_str = if opts.use_color {
                 colorize_git_icon(icon, status, &opts.colors)
             } else {

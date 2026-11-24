@@ -8,6 +8,7 @@ use std::path::Path;
 use crate::cli::Args;
 use crate::fs::{EntryData, FileType};
 use crate::format::FormatOptions;
+use crate::output::print_trees;
 use std::time::SystemTime;
 
 /// Check if a path is an archive file we can read
@@ -60,7 +61,7 @@ fn list_zip(path: &Path) -> Result<Vec<EntryData>> {
         let name = file.name().to_string();
         let is_dir = file.is_dir();
         let size = file.size();
-        let modified = file.last_modified().map(to_system_time).unwrap_or_else(SystemTime::now);
+        let modified = to_system_time(file.last_modified());
 
         let file_type = if is_dir {
             FileType::Directory
@@ -233,8 +234,8 @@ fn list_tar_zst(path: &Path) -> Result<Vec<EntryData>> {
 
 fn to_system_time(dt: zip::DateTime) -> SystemTime {
     use chrono::Utc;
-    let naive = chrono::NaiveDate::from_ymd_opt(dt.year() as i32, dt.month(), dt.day())
-        .and_then(|d| d.and_hms_opt(dt.hour(), dt.minute(), dt.second()))
+    let naive = chrono::NaiveDate::from_ymd_opt(dt.year() as i32, dt.month() as u32, dt.day() as u32)
+        .and_then(|d| d.and_hms_opt(dt.hour() as u32, dt.minute() as u32, dt.second() as u32))
         .unwrap_or_else(|| chrono::Utc::now().naive_utc());
     SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(naive.and_utc().timestamp() as u64)
 }

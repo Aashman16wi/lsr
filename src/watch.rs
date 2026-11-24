@@ -74,7 +74,7 @@ pub fn run_watch(args: Args) -> Result<()> {
 fn should_refresh(event: &Event) -> bool {
     matches!(
         event.kind,
-        EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_) | EventKind::Rename(_, _)
+        EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_)
     )
 }
 
@@ -82,8 +82,8 @@ fn render_once(args: &Args, config: &LsrConfig, path: &PathBuf) -> Result<()> {
     let primary_path = path.clone();
     let effective = config.for_path(&primary_path);
 
-    let effective_format = if args.explicit_format_requested() {
-        args.effective_format()
+    let effective_format = if args.format != crate::cli::OutputFormat::Default {
+        args.format
     } else {
         match effective.format.default.as_str() {
             "long" => crate::cli::OutputFormat::Long,
