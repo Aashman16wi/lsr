@@ -11,17 +11,21 @@
 
 ## Why lsr?
 
-| Feature | lsr | eza | lsd | ls |
-|---------|-----|-----|-----|-----|
-| **Memory** | **6.5 MiB** | 8–11 MiB | 9–10 MiB | 5 MiB |
-| **Speed** | ~5 ms | ~4 ms | ~4 ms | ~3 ms |
-| **Directory sizes (`--du`)** | ✅ | ❌ | ❌ | ❌ |
-| **Content search (`--grep`)** | ✅ | ❌ | ❌ | ❌ |
-| **Group by ext/date/size** | ✅ | ❌ | ❌ | ❌ |
-| **Archive listing** | ✅ | ❌ | ❌ | ❌ |
-| **Watch mode** | ✅ | ❌ | ❌ | ❌ |
-| **Tree with `+N more`** | ✅ | ❌ | ❌ | ❌ |
-| **Per-directory config** | ✅ | ❌ | ❌ | ❌ |
+`lsr` is a drop-in replacement for `ls` that adds modern features developers expect:
+
+| Feature | `ls` | `lsr` |
+|---------|------|-------|
+| **Colors** | Basic | Full ANSI 256-color + themes |
+| **Icons** | ❌ | ✅ 100+ Nerd Font dev icons |
+| **Git status** | ❌ | ✅ Built-in |
+| **Tree view** | ❌ | ✅ `-T` / `--tree` |
+| **Directory sizes** | ❌ | ✅ `--du` (parallel, fast) |
+| **Content search** | ❌ | ✅ `--grep "PATTERN"` |
+| **Group by ext/date/size** | ❌ | ✅ `--group-by` |
+| **Archive listing** | ❌ | ✅ `--archive file.zip` |
+| **Watch mode** | ❌ | ✅ `-w` auto-refresh |
+| **Config file** | ❌ | ✅ TOML + per-dir `.lsr.toml` |
+| **Themes** | ❌ | 6 built-in |
 
 ---
 
@@ -153,33 +157,14 @@ man lsr
 
 ---
 
-## Benchmarks
-
-```bash
-# Run on any directory
-./benchmark.sh /path/to/dir
-```
-
-Results on 42-entry directory:
-
-| Command | lsr | eza | lsd | ls |
-|---------|-----|-----|-----|-----|
-| **Default** | 9.9 ms / 6.5 MiB | 4.3 ms / 8.6 MiB | **4.1 ms** / 9.2 MiB | 3.5 ms / 5.3 MiB |
-| **`-la`** | 10.7 ms / 6.5 MiB | 6.3 ms / 11.1 MiB | 6.6 ms / 10 MiB | **3.5 ms** / 5.3 MiB |
-| **`--du`** | **7.2 ms** ✅ | N/A | N/A | N/A |
-| **Tree** | 15.6 ms / 7 MiB | **3.6 ms** / 8.4 MiB | 4.3 ms / 8.8 MiB | N/A |
-| **Recursive** | N/A | 29 s / 236 MiB ❌ | N/A | 9.3 s / 30 MiB |
-
----
-
 ## Why lsr?
 
-- **Lowest memory** — 6.5 MiB vs 8–11 MiB for eza/lsd
-- **Unique features** — `--du`, `--grep`, `--group-by`, `--archive`, `-w`
-- **Dev-focused** — 100+ Nerd Font icons for code files
-- **Configurable** — TOML config + per-directory overrides
+- **Drop-in replacement** — `alias ls="lsr"` just works
+- **Dev-first** — 100+ icons for code files (Cargo.toml, package.json, Dockerfile, .env, etc.)
+- **Low memory** — ~6.5 MiB vs 8+ MiB for alternatives
+- **Configurable** — TOML config + per-directory `.lsr.toml`
 - **Themes** — 6 built-in, all developer-friendly
-- **No catastrophic recursion** — eza hits 29s on large dirs
+- **No bloat** — Single binary, no daemon, no background services
 
 ---
 
