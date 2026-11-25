@@ -1,15 +1,4 @@
 #!/usr/bin/env bash
-# lsr installer - downloads the latest GitHub release.
-#
-# lsr currently supports Linux and macOS. If no release exists yet, build from
-# source instead:
-#
-#   git clone https://github.com/Aashman16wi/lsr
-#   cd lsr
-#   cargo build --release
-#   mkdir -p ~/.local/bin
-#   install -m755 target/release/lsr ~/.local/bin/lsr
-
 set -euo pipefail
 
 REPO="Aashman16wi/lsr"
